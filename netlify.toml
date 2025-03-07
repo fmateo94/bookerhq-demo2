@@ -11,9 +11,18 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+[functions]
+  included_files = ["src/**"]
+  node_bundler = "esbuild"
+
 [[redirects]]
   from = "/_next/static/*"
   to = "/_next/static/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/nextjs-server"
   status = 200
 
 [[redirects]]
@@ -22,9 +31,14 @@
   status = 200
   force = true
 
-[functions]
-  included_files = ["src/**"]
-  node_bundler = "esbuild"
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    cache-control = '''
+    public,
+    max-age=31536000,
+    immutable
+    '''
 
 [[headers]]
   for = "/*"
