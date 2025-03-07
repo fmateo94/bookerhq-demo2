@@ -17,10 +17,18 @@
   status = 200
 
 [[redirects]]
-  from = "/*"
+  from = "/api/*"
   to = "/.netlify/functions/nextjs-server"
   status = 200
-  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  external_node_modules = ["@netlify/plugin-nextjs"]
+  included_files = ["src/**"]
 
 [[headers]]
   for = "/*"
