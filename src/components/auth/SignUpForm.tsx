@@ -63,9 +63,15 @@ export default function SignUpForm() {
         router.push('/auth/signin');
       }
     } catch (error) {
-      setError(error.message || 'An error occurred during sign up');
-      console.error('Error signing up:', error);
-    } finally {
+        // Type check error before accessing properties
+        const errorMessage = 
+          error && typeof error === 'object' && 'message' in error
+            ? error.message as string
+            : 'An error occurred during sign up';
+        
+        setError(errorMessage);
+        console.error('Error signing up:', error);
+      } finally {
       setLoading(false);
     }
   };
