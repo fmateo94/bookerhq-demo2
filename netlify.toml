@@ -7,6 +7,7 @@
   NEXT_PRIVATE_TARGET = "server"
   SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY"
   NODE_VERSION = "18"
+  NEXT_TELEMETRY_DISABLED = "1"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -14,10 +15,16 @@
 [functions]
   included_files = ["src/**"]
   node_bundler = "esbuild"
+  external_node_modules = ["@next/font", "next"]
 
 [[redirects]]
   from = "/_next/static/*"
   to = "/_next/static/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/_next/*"
+  to = "/_next/:splat"
   status = 200
 
 [[redirects]]
