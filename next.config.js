@@ -13,9 +13,6 @@ const nextConfig = {
     images: {
       unoptimized: true,
     },
-    output: 'standalone',
-    trailingSlash: true,
-    poweredByHeader: false,
-  };
-  
-  module.exports = nextConfig;
+};
+
+module.exports = nextConfig;
