@@ -1,24 +1,19 @@
 [build]
   command = "npm run build"
-  publish = ".next"
+  publish = "out"
 
 [build.environment]
+  NEXT_USE_NETLIFY_EDGE = "true"
   SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  NODE_VERSION = "18"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
 [[redirects]]
   from = "/*"
-  to = "/_next/static/:splat"
+  to = "/index.html"
   status = 200
-  force = true
-  conditions = {Path = "/_next/static/*"}
-
-[[redirects]]
-  from = "/*"
-  to = "/404"
-  status = 404
 
 [[headers]]
   for = "/*"
