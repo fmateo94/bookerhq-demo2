@@ -10,6 +10,10 @@ const nextConfig = {
     typescript: {
       ignoreBuildErrors: true,
     },
+    images: {
+      unoptimized: true,
+    },
+    output: 'standalone',
   };
   
   module.exports = nextConfig;
