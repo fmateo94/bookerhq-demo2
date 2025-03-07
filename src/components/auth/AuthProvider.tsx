@@ -29,21 +29,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const supabase = getSupabaseClient();
 
     if (!supabase) {
+      console.error('Supabase client not initialized');
       setIsLoading(false);
       return;
     }
 
-    // Get session from storage
+    // Get initial session
     const getSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
-        
+        const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
-          console.error('Error getting session:', error);
+          console.error('Error getting session:', error.message);
+          return;
         }
-        
-        setSession(data?.session || null);
-        setUser(data?.session?.user || null);
+        setSession(session);
+        setUser(session?.user ?? null);
       } catch (err) {
         console.error('Failed to get auth session:', err);
       } finally {
@@ -51,27 +51,34 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       }
     };
 
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
     getSession();
 
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user || null);
-        setIsLoading(false);
-      }
-    );
-
-    // Cleanup on unmount
     return () => {
-      authListener?.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
   const signOut = async () => {
     const supabase = getSupabaseClient();
-    if (supabase) {
-      await supabase.auth.signOut();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error.message);
+        return;
+      }
+      setUser(null);
+      setSession(null);
+    } catch (err) {
+      console.error('Failed to sign out:', err);
     }
   };
 
@@ -82,5 +89,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     signOut,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
