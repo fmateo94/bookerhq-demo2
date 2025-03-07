@@ -7,6 +7,7 @@
   NEXT_PRIVATE_TARGET = "server"
   NODE_VERSION = "18"
   NEXT_TELEMETRY_DISABLED = "1"
+  SECRETS_SCAN_IGNORE_PATHS = ".next/*, .netlify/*"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
