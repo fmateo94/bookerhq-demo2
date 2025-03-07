@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 import { Session, User } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -26,53 +26,51 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if we're in the browser and if Supabase URL is available
-    if (typeof window !== 'undefined' && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      
-      // Get session from storage
-      const getSession = async () => {
-        try {
-          const { data, error } = await supabase.auth.getSession();
-          
-          if (error) {
-            console.error('Error getting session:', error);
-          }
-          
-          setSession(data?.session || null);
-          setUser(data?.session?.user || null);
-        } catch (err) {
-          console.error('Failed to get auth session:', err);
-        } finally {
-          setIsLoading(false);
-        }
-      };
+    const supabase = getSupabaseClient();
 
-      getSession();
-
-      // Listen for auth changes
-      const { data: authListener } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          setSession(session);
-          setUser(session?.user || null);
-          setIsLoading(false);
-        }
-      );
-
-      // Cleanup on unmount
-      return () => {
-        authListener?.subscription.unsubscribe();
-      };
-    } else {
-      // If Supabase isn't available, just set loading to false
+    if (!supabase) {
       setIsLoading(false);
+      return;
     }
+
+    // Get session from storage
+    const getSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+        }
+        
+        setSession(data?.session || null);
+        setUser(data?.session?.user || null);
+      } catch (err) {
+        console.error('Failed to get auth session:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    getSession();
+
+    // Listen for auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session);
+        setUser(session?.user || null);
+        setIsLoading(false);
+      }
+    );
+
+    // Cleanup on unmount
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
       await supabase.auth.signOut();
     }
   };

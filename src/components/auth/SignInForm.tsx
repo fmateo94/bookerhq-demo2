@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -18,6 +18,11 @@ export default function SignInForm() {
     setError(null);
 
     try {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        throw new Error('Supabase client not initialized');
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -32,15 +37,14 @@ export default function SignInForm() {
         router.refresh();
       }
     } catch (error) {
-        // Type check error before accessing properties
-        const errorMessage = 
-          error && typeof error === 'object' && 'message' in error
-            ? error.message as string
-            : 'An error occurred during sign in';
-        
-        setError(errorMessage);
-        console.error('Error signing in:', error);
-      } finally {
+      const errorMessage = 
+        error && typeof error === 'object' && 'message' in error
+          ? error.message as string
+          : 'An error occurred during sign in';
+      
+      setError(errorMessage);
+      console.error('Error signing in:', error);
+    } finally {
       setLoading(false);
     }
   };

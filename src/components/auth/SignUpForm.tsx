@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { getSupabaseClient } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -22,6 +22,11 @@ export default function SignUpForm() {
     setError(null);
 
     try {
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        throw new Error('Supabase client not initialized');
+      }
+
       // Sign up with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -63,15 +68,14 @@ export default function SignUpForm() {
         router.push('/auth/signin');
       }
     } catch (error) {
-        // Type check error before accessing properties
-        const errorMessage = 
-          error && typeof error === 'object' && 'message' in error
-            ? error.message as string
-            : 'An error occurred during sign up';
-        
-        setError(errorMessage);
-        console.error('Error signing up:', error);
-      } finally {
+      const errorMessage = 
+        error && typeof error === 'object' && 'message' in error
+          ? error.message as string
+          : 'An error occurred during sign up';
+      
+      setError(errorMessage);
+      console.error('Error signing up:', error);
+    } finally {
       setLoading(false);
     }
   };
