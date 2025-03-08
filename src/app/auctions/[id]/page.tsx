@@ -9,13 +9,20 @@ import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format, formatDistanceToNow, isAfter, isBefore, isPast } from 'date-fns';
+import { Auction, AuctionWithDetails, Bid, Service } from '@/types/auction';
+import { User } from '@supabase/supabase-js';
+import { Database } from '@/types/supabase';
+
+type AuctionRow = Database['public']['Tables']['auctions']['Row'];
+type ServiceRow = Database['public']['Tables']['services']['Row'];
+type BidRow = Database['public']['Tables']['bids']['Row'];
 
 export default function AuctionDetailPage({ params }: { params: { id: string } }) {
   const { user, isLoading: isAuthLoading } = useAuth();
-  const [auction, setAuction] = useState<any>(null);
-  const [service, setService] = useState<any>(null);
-  const [provider, setProvider] = useState<any>(null);
-  const [bids, setBids] = useState<any[]>([]);
+  const [auction, setAuction] = useState<AuctionWithDetails | null>(null);
+  const [service, setService] = useState<Service | null>(null);
+  const [provider, setProvider] = useState<User | null>(null);
+  const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [bidAmount, setBidAmount] = useState<string>('');
   const [bidLoading, setBidLoading] = useState(false);
@@ -25,7 +32,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
   const router = useRouter();
 
   // Function to determine auction status
-  const getAuctionStatus = (auction: any) => {
+  const getAuctionStatus = (auction: AuctionWithDetails | null) => {
     if (!auction) return null;
     
     const now = new Date();
@@ -63,33 +70,56 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           throw auctionError;
         }
         
-        setAuction(auctionData);
+        const typedAuctionData = auctionData as AuctionRow;
+        const auction: AuctionWithDetails = {
+          id: typedAuctionData.id,
+          service_id: typedAuctionData.service_id,
+          provider_id: typedAuctionData.provider_id,
+          auction_start: typedAuctionData.auction_start,
+          auction_end: typedAuctionData.auction_end,
+          starting_price: typedAuctionData.starting_price,
+          current_price: typedAuctionData.current_price,
+          current_winner_id: typedAuctionData.current_winner_id,
+          created_at: typedAuctionData.created_at
+        };
+        setAuction(auction);
 
         // Fetch service details
         const { data: serviceData, error: serviceError } = await supabase
           .from('services')
           .select('*')
-          .eq('id', auctionData.service_id)
+          .eq('id', typedAuctionData.service_id)
           .single();
 
         if (serviceError) {
           throw serviceError;
         }
         
-        setService(serviceData);
+        const typedServiceData = serviceData as ServiceRow;
+        const service: Service = {
+          id: typedServiceData.id,
+          name: typedServiceData.name,
+          description: typedServiceData.description,
+          price: typedServiceData.price,
+          duration: typedServiceData.duration,
+          provider_id: typedServiceData.provider_id,
+          service_type: typedServiceData.service_type,
+          created_at: typedServiceData.created_at
+        };
+        setService(service);
 
         // Fetch provider details
         const { data: providerData, error: providerError } = await supabase
           .from('users')
           .select('*')
-          .eq('id', auctionData.provider_id)
+          .eq('id', typedAuctionData.provider_id)
           .single();
 
         if (providerError) {
           throw providerError;
         }
         
-        setProvider(providerData);
+        setProvider(providerData as User);
 
         // Fetch bids for this auction
         const { data: bidsData, error: bidsError } = await supabase
@@ -105,14 +135,22 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           throw bidsError;
         }
         
-        setBids(bidsData || []);
+        const typedBidsData = (bidsData || []) as (BidRow & { users: User })[];
+        setBids(typedBidsData.map(row => ({
+          id: row.id,
+          auction_id: row.auction_id,
+          user_id: row.user_id,
+          amount: row.amount,
+          created_at: row.created_at,
+          users: row.users
+        })));
 
         // Set initial bid amount slightly higher than current price
-        if (auctionData.current_price) {
-          const suggestedBid = Math.ceil(auctionData.current_price * 1.05); // 5% higher
+        if (typedAuctionData.current_price) {
+          const suggestedBid = Math.ceil(typedAuctionData.current_price * 1.05); // 5% higher
           setBidAmount(suggestedBid.toString());
         } else {
-          setBidAmount(auctionData.starting_price.toString());
+          setBidAmount(typedAuctionData.starting_price.toString());
         }
       } catch (error) {
         console.error('Error fetching auction data:', error);
@@ -147,7 +185,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         .single();
 
       if (!error && data) {
-        setAuction(data);
+        setAuction(data as AuctionWithDetails);
       }
     };
 
@@ -163,7 +201,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         .order('amount', { ascending: false });
 
       if (!error && data) {
-        setBids(data);
+        setBids(data as Bid[]);
       }
     };
 

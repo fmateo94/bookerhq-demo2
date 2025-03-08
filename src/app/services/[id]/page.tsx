@@ -8,13 +8,19 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { format, parseISO, addDays, isBefore, isAfter } from 'date-fns';
+import { format, parseISO, addDays, isBefore } from 'date-fns';
+import { Service, Availability } from '@/types/service';
+import { User } from '@supabase/supabase-js';
+import { Database } from '@/types/supabase';
+
+type ServiceRow = Database['public']['Tables']['services']['Row'];
+type AvailabilityRow = Database['public']['Tables']['availability']['Row'];
 
 export default function ServiceDetailPage({ params }: { params: { id: string } }) {
   const { user, isLoading: isAuthLoading } = useAuth();
-  const [service, setService] = useState<any>(null);
-  const [provider, setProvider] = useState<any>(null);
-  const [availability, setAvailability] = useState<any[]>([]);
+  const [service, setService] = useState<Service | null>(null);
+  const [provider, setProvider] = useState<User | null>(null);
+  const [availability, setAvailability] = useState<Availability[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
@@ -49,32 +55,50 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
           throw serviceError;
         }
         
-        setService(serviceData);
+        const typedServiceData = serviceData as ServiceRow;
+        setService({
+          id: typedServiceData.id,
+          name: typedServiceData.name,
+          description: typedServiceData.description,
+          price: typedServiceData.price,
+          duration: typedServiceData.duration,
+          provider_id: typedServiceData.provider_id,
+          service_type: typedServiceData.service_type,
+          created_at: typedServiceData.created_at
+        });
 
         // Fetch provider details
         const { data: providerData, error: providerError } = await supabase
           .from('users')
           .select('*')
-          .eq('id', serviceData.provider_id)
+          .eq('id', typedServiceData.provider_id)
           .single();
 
         if (providerError) {
           throw providerError;
         }
         
-        setProvider(providerData);
+        setProvider(providerData as User);
 
         // Fetch provider availability
         const { data: availabilityData, error: availabilityError } = await supabase
           .from('availability')
           .select('*')
-          .eq('provider_id', serviceData.provider_id);
+          .eq('provider_id', typedServiceData.provider_id);
 
         if (availabilityError) {
           throw availabilityError;
         }
         
-        setAvailability(availabilityData || []);
+        const typedAvailabilityData = (availabilityData || []) as AvailabilityRow[];
+        setAvailability(typedAvailabilityData.map(row => ({
+          id: row.id,
+          provider_id: row.provider_id,
+          day_of_week: row.day_of_week,
+          start_time: row.start_time,
+          end_time: row.end_time,
+          created_at: row.created_at
+        })));
         
         // Set default selected date to today
         if (next7Days.length > 0) {
@@ -137,7 +161,7 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
       return;
     }
 
-    if (!selectedDate || !selectedTime) {
+    if (!selectedDate || !selectedTime || !service) {
       setError('Please select a date and time to book this service.');
       return;
     }
@@ -164,7 +188,7 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
         .insert([
           {
             service_id: service.id,
-            provider_id: provider.id,
+            provider_id: service.provider_id,
             customer_id: user.id,
             start_time: startTime.toISOString(),
             end_time: endTime.toISOString(),
@@ -183,7 +207,7 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
           .from('notifications')
           .insert([
             {
-              user_id: provider.id,
+              user_id: service.provider_id,
               title: 'New Appointment Request',
               message: `${user.user_metadata?.first_name || 'A customer'} ${user.user_metadata?.last_name || ''} has requested an appointment for ${service.name} on ${format(startTime, 'PPP')} at ${format(startTime, 'p')}.`,
               notification_type: 'appointment',
@@ -276,11 +300,11 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
               
               <div className="flex items-center mb-4">
                 <div className="w-8 h-8 bg-gray-300 rounded-full mr-2 flex items-center justify-center">
-                  <span className="text-gray-600 text-sm">{provider?.first_name?.[0]}{provider?.last_name?.[0]}</span>
+                  <span className="text-gray-600 text-sm">{provider?.user_metadata?.first_name?.[0]}{provider?.user_metadata?.last_name?.[0]}</span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{provider?.first_name} {provider?.last_name}</p>
-                  <p className="text-xs text-gray-500 capitalize">{provider?.user_type?.replace('_', ' ')}</p>
+                  <p className="text-sm font-medium">{provider?.user_metadata?.first_name} {provider?.user_metadata?.last_name}</p>
+                  <p className="text-xs text-gray-500 capitalize">{provider?.user_metadata?.user_type?.replace('_', ' ')}</p>
                 </div>
               </div>
               
