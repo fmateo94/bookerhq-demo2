@@ -72,7 +72,7 @@ export default function Home() {
               A better way to book
             </p>
             <p className="mt-4 max-w-2xl text-xl text-gray-500 lg:mx-auto">
-              Discover why StyleBook is the preferred platform for booking haircuts and tattoo appointments.
+              Discover why BookerHQ is the preferred platform for booking haircuts and tattoo appointments.
             </p>
           </div>
 
@@ -186,7 +186,7 @@ export default function Home() {
             <span className="block">No credit card required.</span>
           </h2>
           <p className="mt-4 text-lg leading-6 text-blue-200">
-            Join thousands of satisfied customers who book their haircuts and tattoos through StyleBook.
+            Join thousands of satisfied customers who book their haircuts and tattoos through BookerHQ.
           </p>
           <Link
             href="/auth/signup"

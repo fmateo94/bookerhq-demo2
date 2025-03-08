@@ -22,8 +22,8 @@ export default function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/" className="text-xl font-bold text-blue-600">
-                StyleBook
+              <Link href="/" className="flex items-center">
+                <span className="text-xl font-bold text-blue-600">BookerHQ</span>
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
