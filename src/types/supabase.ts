@@ -76,6 +76,38 @@ export interface Database {
           created_at?: string
         }
       }
+      appointments: {
+        Row: {
+          id: string
+          service_id: string
+          provider_id: string
+          customer_id: string
+          start_time: string
+          end_time: string
+          status: 'pending' | 'confirmed' | 'cancelled'
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          service_id: string
+          provider_id: string
+          customer_id: string
+          start_time: string
+          end_time: string
+          status: 'pending' | 'confirmed' | 'cancelled'
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          service_id?: string
+          provider_id?: string
+          customer_id?: string
+          start_time?: string
+          end_time?: string
+          status?: 'pending' | 'confirmed' | 'cancelled'
+          created_at?: string
+        }
+      }
       bids: {
         Row: {
           id: string
@@ -83,13 +115,6 @@ export interface Database {
           user_id: string
           amount: number
           created_at: string
-          users?: {
-            id: string
-            user_metadata?: {
-              first_name?: string
-              last_name?: string
-            }
-          }
         }
         Insert: {
           id?: string
@@ -106,6 +131,71 @@ export interface Database {
           created_at?: string
         }
       }
+      users: {
+        Row: {
+          id: string
+          email: string | null
+          user_metadata: {
+            first_name?: string
+            last_name?: string
+            user_type?: string
+          } | null
+          app_metadata: Record<string, any> | null
+          aud: string
+          created_at: string
+        }
+        Insert: {
+          id: string
+          email?: string | null
+          user_metadata?: Record<string, any> | null
+          app_metadata?: Record<string, any> | null
+          aud?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string | null
+          user_metadata?: Record<string, any> | null
+          app_metadata?: Record<string, any> | null
+          aud?: string
+          created_at?: string
+        }
+      }
+      availability: {
+        Row: {
+          id: string
+          provider_id: string
+          day_of_week: number
+          start_time: string
+          end_time: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          provider_id: string
+          day_of_week: number
+          start_time: string
+          end_time: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          provider_id?: string
+          day_of_week?: number
+          start_time?: string
+          end_time?: string
+          created_at?: string
+        }
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
     }
   }
 } 

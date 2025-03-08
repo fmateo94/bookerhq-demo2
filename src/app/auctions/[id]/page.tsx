@@ -16,6 +16,7 @@ import { Database } from '@/types/supabase';
 type AuctionRow = Database['public']['Tables']['auctions']['Row'];
 type ServiceRow = Database['public']['Tables']['services']['Row'];
 type BidRow = Database['public']['Tables']['bids']['Row'];
+type UserRow = Database['public']['Tables']['users']['Row'];
 
 export default function AuctionDetailPage({ params }: { params: { id: string } }) {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -119,7 +120,15 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           throw providerError;
         }
         
-        setProvider(providerData as User);
+        const typedProviderData = providerData as UserRow;
+        setProvider({
+          id: typedProviderData.id,
+          email: typedProviderData.email || '',
+          app_metadata: typedProviderData.app_metadata || {},
+          user_metadata: typedProviderData.user_metadata || {},
+          aud: typedProviderData.aud || '',
+          created_at: typedProviderData.created_at || ''
+        });
 
         // Fetch bids for this auction
         const { data: bidsData, error: bidsError } = await supabase
@@ -135,15 +144,33 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           throw bidsError;
         }
         
-        const typedBidsData = (bidsData || []) as (BidRow & { users: User })[];
+        const typedBidsData = (bidsData || []) as unknown as Array<{
+          id: string;
+          auction_id: string;
+          user_id: string;
+          amount: number;
+          created_at: string;
+          users: {
+            id: string;
+            user_metadata: {
+              first_name?: string;
+              last_name?: string;
+              user_type?: string;
+            } | null;
+          };
+        }>;
+
         setBids(typedBidsData.map(row => ({
           id: row.id,
           auction_id: row.auction_id,
           user_id: row.user_id,
           amount: row.amount,
           created_at: row.created_at,
-          users: row.users
-        })));
+          users: {
+            id: row.users.id,
+            user_metadata: row.users.user_metadata || {}
+          }
+        } as Bid)));
 
         // Set initial bid amount slightly higher than current price
         if (typedAuctionData.current_price) {
@@ -185,7 +212,18 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         .single();
 
       if (!error && data) {
-        setAuction(data as AuctionWithDetails);
+        const typedData = data as AuctionRow;
+        setAuction({
+          id: typedData.id,
+          service_id: typedData.service_id,
+          provider_id: typedData.provider_id,
+          auction_start: typedData.auction_start,
+          auction_end: typedData.auction_end,
+          starting_price: typedData.starting_price,
+          current_price: typedData.current_price,
+          current_winner_id: typedData.current_winner_id,
+          created_at: typedData.created_at
+        });
       }
     };
 
@@ -201,7 +239,33 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         .order('amount', { ascending: false });
 
       if (!error && data) {
-        setBids(data as Bid[]);
+        const typedData = (data || []) as unknown as Array<{
+          id: string;
+          auction_id: string;
+          user_id: string;
+          amount: number;
+          created_at: string;
+          users: {
+            id: string;
+            user_metadata: {
+              first_name?: string;
+              last_name?: string;
+              user_type?: string;
+            } | null;
+          };
+        }>;
+
+        setBids(typedData.map(row => ({
+          id: row.id,
+          auction_id: row.auction_id,
+          user_id: row.user_id,
+          amount: row.amount,
+          created_at: row.created_at,
+          users: {
+            id: row.users.id,
+            user_metadata: row.users.user_metadata || {}
+          }
+        } as Bid)));
       }
     };
 
@@ -268,6 +332,11 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
   const handlePlaceBid = async () => {
     if (!user) {
       router.push('/auth/signin');
+      return;
+    }
+
+    if (!auction || !service || !provider) {
+      setError('Auction information is not available.');
       return;
     }
 
@@ -482,11 +551,11 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-gray-500">Date</p>
-                      <p className="font-semibold">{format(new Date(auction?.start_time), 'PPPP')}</p>
+                      <p className="font-semibold">{format(new Date(auction?.auction_start || ''), 'PPPP')}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Time</p>
-                      <p className="font-semibold">{format(new Date(auction?.start_time), 'p')}</p>
+                      <p className="font-semibold">{format(new Date(auction?.auction_start || ''), 'p')}</p>
                     </div>
                   </div>
                 </div>
@@ -496,11 +565,18 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                 <h2 className="text-lg font-semibold mb-2">Provider</h2>
                 <div className="bg-gray-50 rounded-lg p-4 flex items-center">
                   <div className="w-12 h-12 bg-gray-300 rounded-full mr-4 flex items-center justify-center">
-                    <span className="text-gray-600 text-lg">{provider?.first_name?.[0]}{provider?.last_name?.[0]}</span>
+                    <span className="text-gray-600 text-lg">
+                      {provider?.user_metadata?.first_name?.[0]}
+                      {provider?.user_metadata?.last_name?.[0]}
+                    </span>
                   </div>
                   <div>
-                    <p className="font-semibold">{provider?.first_name} {provider?.last_name}</p>
-                    <p className="text-sm text-gray-500 capitalize">{provider?.user_type?.replace('_', ' ')}</p>
+                    <p className="font-semibold">
+                      {provider?.user_metadata?.first_name} {provider?.user_metadata?.last_name}
+                    </p>
+                    <p className="text-sm text-gray-500 capitalize">
+                      {provider?.user_metadata?.user_type?.replace('_', ' ')}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -565,7 +641,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                         type="number"
                         value={bidAmount}
                         onChange={(e) => setBidAmount(e.target.value)}
-                        min={auction.current_price ? auction.current_price + 1 : auction.starting_price}
+                        min={auction?.current_price ? auction.current_price + 1 : auction?.starting_price}
                         step="1"
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
@@ -642,12 +718,12 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                             <div className="text-sm font-medium text-gray-900">
                               {index === 0 && auctionStatus === 'completed' ? (
                                 <span className="flex items-center">
-                                  {bid.users?.first_name} {bid.users?.last_name}
+                                  {bid.users?.user_metadata?.first_name} {bid.users?.user_metadata?.last_name}
                                   <span className="ml-2 text-yellow-500">👑</span>
                                 </span>
                               ) : (
                                 <span>
-                                  {bid.users?.first_name} {bid.users?.last_name}
+                                  {bid.users?.user_metadata?.first_name} {bid.users?.user_metadata?.last_name}
                                 </span>
                               )}
                             </div>

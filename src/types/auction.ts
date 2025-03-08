@@ -1,39 +1,26 @@
-import { User } from '@supabase/supabase-js';
+import type { Database } from './supabase';
 
-export interface Service {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  duration: number;
-  provider_id: string;
-  service_type: 'haircut' | 'tattoo';
-  created_at: string;
-}
+type UserRow = Database['public']['Tables']['users']['Row'];
+type ServiceRow = Database['public']['Tables']['services']['Row'];
+type AuctionRow = Database['public']['Tables']['auctions']['Row'];
+type BidRow = Database['public']['Tables']['bids']['Row'];
 
-export interface Auction {
-  id: string;
-  service_id: string;
-  provider_id: string;
-  auction_start: string;
-  auction_end: string;
-  starting_price: number;
-  current_price: number | null;
-  current_winner_id: string | null;
-  created_at: string;
-}
-
-export interface Bid {
-  id: string;
-  auction_id: string;
-  user_id: string;
-  amount: number;
-  created_at: string;
-  users?: User;
-}
+export type Service = ServiceRow;
+export type Auction = AuctionRow;
 
 export interface AuctionWithDetails extends Auction {
   service?: Service;
-  provider?: User;
+  provider?: UserRow;
   bids?: Bid[];
+}
+
+export interface Bid extends BidRow {
+  users?: {
+    id: string;
+    user_metadata: {
+      first_name?: string;
+      last_name?: string;
+      user_type?: string;
+    } | null;
+  };
 } 

@@ -1,36 +1,19 @@
+import type { Database } from './supabase';
 import { User } from '@supabase/supabase-js';
 
-export interface Service {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  duration: number;
-  provider_id: string;
-  service_type: 'haircut' | 'tattoo';
-  created_at: string;
-  provider?: User;
-}
+type ServiceRow = Database['public']['Tables']['services']['Row'];
+type AvailabilityRow = Database['public']['Tables']['availability']['Row'];
+type UserRow = Database['public']['Tables']['users']['Row'];
+type AppointmentRow = Database['public']['Tables']['appointments']['Row'];
 
-export interface Availability {
-  id: string;
-  provider_id: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
-  created_at: string;
-}
+export type Service = ServiceRow & {
+  provider?: UserRow;
+};
 
-export interface Appointment {
-  id: string;
-  service_id: string;
-  provider_id: string;
-  customer_id: string;
-  start_time: string;
-  end_time: string;
-  status: 'pending' | 'confirmed' | 'cancelled';
-  created_at: string;
+export type Availability = AvailabilityRow;
+
+export interface Appointment extends AppointmentRow {
   service?: Service;
-  provider?: User;
-  customer?: User;
+  provider?: UserRow;
+  customer?: UserRow;
 } 

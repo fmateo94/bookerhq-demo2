@@ -15,6 +15,7 @@ import { Database } from '@/types/supabase';
 
 type ServiceRow = Database['public']['Tables']['services']['Row'];
 type AvailabilityRow = Database['public']['Tables']['availability']['Row'];
+type UserRow = Database['public']['Tables']['users']['Row'];
 
 export default function ServiceDetailPage({ params }: { params: { id: string } }) {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -78,7 +79,15 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
           throw providerError;
         }
         
-        setProvider(providerData as User);
+        const typedProviderData = providerData as UserRow;
+        setProvider({
+          id: typedProviderData.id,
+          email: typedProviderData.email || '',
+          app_metadata: typedProviderData.app_metadata || {},
+          user_metadata: typedProviderData.user_metadata || {},
+          aud: typedProviderData.aud || '',
+          created_at: typedProviderData.created_at || ''
+        });
 
         // Fetch provider availability
         const { data: availabilityData, error: availabilityError } = await supabase
