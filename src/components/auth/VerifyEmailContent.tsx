@@ -1,13 +1,21 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FiMail } from 'react-icons/fi';
 
 export default function VerifyEmailContent() {
-  const searchParams = useSearchParams();
-  const email = searchParams?.get('email') || '';
+  const [email, setEmail] = useState<string>('');
+  
+  useEffect(() => {
+    // Get email from URL in client-side only
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    if (emailParam) {
+      setEmail(emailParam);
+    }
+  }, []);
 
   return (
     <div className="w-full max-w-md mx-auto p-6">
