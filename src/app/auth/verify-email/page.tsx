@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 'use client';
 
 import Link from 'next/link';
@@ -7,7 +9,7 @@ import { FiMail } from 'react-icons/fi';
 
 export default function VerifyEmail() {
   const searchParams = useSearchParams();
-  const email = searchParams.get('email');
+  const email = searchParams?.get('email') || '';
 
   return (
     <div className="w-full max-w-md mx-auto p-6">
@@ -25,10 +27,16 @@ export default function VerifyEmail() {
 
         <h1 className="text-2xl font-bold mb-4">Check Your Email</h1>
         
-        <p className="text-gray-600 mb-6">
-          We've sent a verification link to{' '}
-          <span className="font-medium">{email}</span>. Click the link to verify your email address and complete your registration.
-        </p>
+        {email ? (
+          <p className="text-gray-600 mb-6">
+            We've sent a verification link to{' '}
+            <span className="font-medium">{email}</span>. Click the link to verify your email address and complete your registration.
+          </p>
+        ) : (
+          <p className="text-gray-600 mb-6">
+            Please check your email for the verification link to complete your registration.
+          </p>
+        )}
 
         <div className="space-y-4">
           <p className="text-sm text-gray-500">
