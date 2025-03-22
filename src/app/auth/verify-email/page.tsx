@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import VerifyEmailContent from '@/components/auth/VerifyEmailContent';
+import Navbar from '@/components/ui/Navbar';
 
 export const metadata: Metadata = {
   title: 'Verify Email - Booker',
@@ -12,8 +13,11 @@ export const revalidate = false;
 
 export default function VerifyEmailPage() {
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <VerifyEmailContent />
-    </main>
+    <div className="min-h-screen bg-[#F8F9FF]">
+      <Navbar />
+      <main className="flex flex-col items-center justify-center px-4 py-12">
+        <VerifyEmailContent />
+      </main>
+    </div>
   );
 } 
