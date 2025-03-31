@@ -9,21 +9,35 @@ import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format, formatDistanceToNow, isAfter, isBefore, isPast } from 'date-fns';
-import { Auction, AuctionWithDetails, Bid, Service } from '@/types/auction';
 import { User } from '@supabase/supabase-js';
 import { Database } from '@/types/supabase';
 
 type AuctionRow = Database['public']['Tables']['auctions']['Row'];
 type ServiceRow = Database['public']['Tables']['services']['Row'];
 type BidRow = Database['public']['Tables']['bids']['Row'];
-type UserRow = Database['public']['Tables']['users']['Row'];
+
+interface BidWithUser extends BidRow {
+  user: User;
+}
+
+interface AuctionDetails extends AuctionRow {
+  service?: ServiceRow;
+  provider?: User;
+  bids?: BidWithUser[];
+}
+
+export interface AuctionWithDetails extends AuctionRow {
+  service?: ServiceRow;
+  provider?: User;
+  bids?: BidWithUser[];
+}
 
 export default function AuctionDetailPage({ params }: { params: { id: string } }) {
   const { user, isLoading: isAuthLoading } = useAuth();
-  const [auction, setAuction] = useState<AuctionWithDetails | null>(null);
-  const [service, setService] = useState<Service | null>(null);
+  const [auction, setAuction] = useState<AuctionDetails | null>(null);
+  const [service, setService] = useState<ServiceRow | null>(null);
   const [provider, setProvider] = useState<User | null>(null);
-  const [bids, setBids] = useState<Bid[]>([]);
+  const [bids, setBids] = useState<BidWithUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [bidAmount, setBidAmount] = useState<string>('');
   const [bidLoading, setBidLoading] = useState(false);
@@ -33,7 +47,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
   const router = useRouter();
 
   // Function to determine auction status
-  const getAuctionStatus = (auction: AuctionWithDetails | null) => {
+  const getAuctionStatus = (auction: AuctionDetails | null) => {
     if (!auction) return null;
     
     const now = new Date();
@@ -72,7 +86,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         }
         
         const typedAuctionData = auctionData as AuctionRow;
-        const auction: AuctionWithDetails = {
+        const auction: AuctionDetails = {
           id: typedAuctionData.id,
           service_id: typedAuctionData.service_id,
           provider_id: typedAuctionData.provider_id,
@@ -97,7 +111,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         }
         
         const typedServiceData = serviceData as ServiceRow;
-        const service: Service = {
+        const service: ServiceRow = {
           id: typedServiceData.id,
           name: typedServiceData.name,
           description: typedServiceData.description,
@@ -110,32 +124,20 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         setService(service);
 
         // Fetch provider details
-        const { data: providerData, error: providerError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', typedAuctionData.provider_id)
-          .single();
+        const { data: providerData, error: providerError } = await supabase.auth.admin.getUserById(typedAuctionData.provider_id);
 
         if (providerError) {
           throw providerError;
         }
         
-        const typedProviderData = providerData as UserRow;
-        setProvider({
-          id: typedProviderData.id,
-          email: typedProviderData.email || '',
-          app_metadata: typedProviderData.app_metadata || {},
-          user_metadata: typedProviderData.user_metadata || {},
-          aud: typedProviderData.aud || '',
-          created_at: typedProviderData.created_at || ''
-        });
+        setProvider(providerData.user);
 
         // Fetch bids for this auction
         const { data: bidsData, error: bidsError } = await supabase
           .from('bids')
           .select(`
             *,
-            users:user_id(*)
+            user:user_id (*)
           `)
           .eq('auction_id', params.id)
           .order('amount', { ascending: false });
@@ -144,33 +146,8 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           throw bidsError;
         }
         
-        const typedBidsData = (bidsData || []) as unknown as Array<{
-          id: string;
-          auction_id: string;
-          user_id: string;
-          amount: number;
-          created_at: string;
-          users: {
-            id: string;
-            user_metadata: {
-              first_name?: string;
-              last_name?: string;
-              user_type?: string;
-            } | null;
-          };
-        }>;
-
-        setBids(typedBidsData.map(row => ({
-          id: row.id,
-          auction_id: row.auction_id,
-          user_id: row.user_id,
-          amount: row.amount,
-          created_at: row.created_at,
-          users: {
-            id: row.users.id,
-            user_metadata: row.users.user_metadata || {}
-          }
-        } as Bid)));
+        const typedBidsData = (bidsData || []) as BidWithUser[];
+        setBids(typedBidsData);
 
         // Set initial bid amount slightly higher than current price
         if (typedAuctionData.current_price) {
@@ -233,7 +210,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
         .from('bids')
         .select(`
           *,
-          users:user_id(*)
+          user:user_id (*)
         `)
         .eq('auction_id', params.id)
         .order('amount', { ascending: false });
@@ -245,7 +222,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           user_id: string;
           amount: number;
           created_at: string;
-          users: {
+          user: {
             id: string;
             user_metadata: {
               first_name?: string;
@@ -261,11 +238,8 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           user_id: row.user_id,
           amount: row.amount,
           created_at: row.created_at,
-          users: {
-            id: row.users.id,
-            user_metadata: row.users.user_metadata || {}
-          }
-        } as Bid)));
+          user: row.user
+        } as BidWithUser)));
       }
     };
 
@@ -718,12 +692,12 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                             <div className="text-sm font-medium text-gray-900">
                               {index === 0 && auctionStatus === 'completed' ? (
                                 <span className="flex items-center">
-                                  {bid.users?.user_metadata?.first_name} {bid.users?.user_metadata?.last_name}
+                                  {bid.user?.user_metadata?.first_name} {bid.user?.user_metadata?.last_name}
                                   <span className="ml-2 text-yellow-500">👑</span>
                                 </span>
                               ) : (
                                 <span>
-                                  {bid.users?.user_metadata?.first_name} {bid.users?.user_metadata?.last_name}
+                                  {bid.user?.user_metadata?.first_name} {bid.user?.user_metadata?.last_name}
                                 </span>
                               )}
                             </div>

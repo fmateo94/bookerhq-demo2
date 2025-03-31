@@ -131,36 +131,6 @@ export interface Database {
           created_at?: string
         }
       }
-      users: {
-        Row: {
-          id: string
-          email: string | null
-          user_metadata: {
-            first_name?: string
-            last_name?: string
-            user_type?: string
-          } | null
-          app_metadata: Record<string, any> | null
-          aud: string
-          created_at: string
-        }
-        Insert: {
-          id: string
-          email?: string | null
-          user_metadata?: Record<string, any> | null
-          app_metadata?: Record<string, any> | null
-          aud?: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          email?: string | null
-          user_metadata?: Record<string, any> | null
-          app_metadata?: Record<string, any> | null
-          aud?: string
-          created_at?: string
-        }
-      }
       availability: {
         Row: {
           id: string
@@ -197,5 +167,21 @@ export interface Database {
     Enums: {
       [_ in never]: never
     }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
-} 
+}
+
+// Helper types for Supabase Auth User Metadata
+export interface UserMetadata {
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+  user_type: 'individual' | 'business';
+}
+
+export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row']
+export type Enums<T extends keyof Database['public']['Enums']> = Database['public']['Enums'][T]
+export type TablesInsert<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert']
+export type TablesUpdate<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'] 
