@@ -1,26 +1,23 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import SignInForm from '@/components/auth/SignInForm';
-import { Manrope } from 'next/font/google';
+import { Comfortaa } from 'next/font/google';
 
-const manrope = Manrope({ subsets: ['latin'] });
+const comfortaa = Comfortaa({ subsets: ['latin'] });
 
 export default function SignInPage() {
   return (
-    <div className="min-h-screen flex bg-white">
-      {/* Form */}
-      <div className="flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-20 xl:px-24">
-        <div className="mx-auto w-full max-w-[420px]">
-          <h1 className={`${manrope.className} text-[36px] font-normal text-black mb-2 text-center tracking-[-0.015em]`}>
-            Sign In
+    <div className="min-h-screen flex flex-col items-center justify-center bg-white px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-[420px] space-y-8">
+        <div className="text-center">
+          <h1 className={`${comfortaa.className} text-[36px] font-normal text-black tracking-[-0.015em] mb-2`}>
+            Log in
           </h1>
-          <p className="text-[#64748B] text-center mb-10 text-[15px]">
+          <p className="text-[15px] text-[#64748B]">
             Sign in to continue to your account
           </p>
-          <SignInForm />
         </div>
+        <SignInForm />
       </div>
     </div>
   );
