@@ -323,12 +323,12 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
     
     // Validate bid amount
     if (auction.current_price && bidAmountNum <= auction.current_price) {
-      setError(`Your bid must be higher than the current bid of $${auction.current_price}.`);
+      setError(`Your bid must be higher than the current bid of $${(auction.current_price / 100).toFixed(2)}`);
       return;
     }
 
     if (!auction.current_price && bidAmountNum < auction.starting_price) {
-      setError(`Your bid must be at least the starting price of $${auction.starting_price}.`);
+      setError(`Your bid must be at least the starting price of $${(auction.starting_price / 100).toFixed(2)}`);
       return;
     }
 
@@ -378,7 +378,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
           {
             user_id: provider.id,
             title: 'New Bid Placed',
-            message: `${user.user_metadata?.first_name || 'A user'} ${user.user_metadata?.last_name || ''} has placed a bid of $${bidAmountNum} on your auction for ${service.name}.`,
+            message: `${user.user_metadata?.first_name || 'A user'} ${user.user_metadata?.last_name || ''} has placed a bid of $${(bidAmountNum / 100).toFixed(2)} on your auction for ${service.name}.`,
             notification_type: 'auction',
             related_id: auction.id,
           }
@@ -392,14 +392,14 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
             {
               user_id: auction.current_winner_id,
               title: 'You\'ve Been Outbid',
-              message: `Someone has placed a higher bid of $${bidAmountNum} on the auction for ${service.name}.`,
+              message: `Someone has placed a higher bid of $${(bidAmountNum / 100).toFixed(2)} on the auction for ${service.name}.`,
               notification_type: 'auction',
               related_id: auction.id,
             }
           ]);
       }
 
-      setSuccessMessage(`Your bid of $${bidAmountNum} has been placed successfully!`);
+      setSuccessMessage(`Your bid of $${(bidAmountNum / 100).toFixed(2)} has been placed successfully!`);
       
       // Suggest a higher bid for next time
       const suggestedNextBid = Math.ceil(bidAmountNum * 1.05); // 5% higher
@@ -509,7 +509,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                   <div className="flex flex-wrap gap-6 mb-2">
                     <div>
                       <p className="text-sm text-gray-500">Regular Price</p>
-                      <p className="text-xl font-semibold">${service?.price}</p>
+                      <p className="text-xl font-semibold">${service?.price ? (service.price / 100).toFixed(2) : 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Duration</p>
@@ -563,13 +563,15 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
               <div className="space-y-4 mb-6">
                 <div>
                   <p className="text-sm text-gray-500">Starting Price</p>
-                  <p className="text-xl font-semibold">${auction?.starting_price}</p>
+                  <p className="text-xl font-semibold">
+                    ${auction?.starting_price ? (auction.starting_price / 100).toFixed(2) : 'N/A'}
+                  </p>
                 </div>
                 
                 <div>
                   <p className="text-sm text-gray-500">Current Highest Bid</p>
                   <p className="text-2xl font-bold text-blue-600">
-                    {auction?.current_price ? `$${auction.current_price}` : 'No bids yet'}
+                    {auction?.current_price ? `$${(auction.current_price / 100).toFixed(2)}` : 'No bids yet'}
                   </p>
                 </div>
                 
@@ -642,7 +644,9 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                       <div>
                         <p className="text-sm">
                           This auction has ended with a winning bid of{' '}
-                          <span className="font-semibold">${auction.current_price}</span>
+                          <span className="font-semibold">
+                            ${auction?.current_price ? (auction.current_price / 100).toFixed(2) : 'N/A'}
+                          </span>
                         </p>
                         {isUserHighestBidder && (
                           <p className="mt-2 text-green-600 font-semibold">
@@ -704,7 +708,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">${bid.amount}</div>
+                          <div className="text-sm text-gray-900">${(bid.amount / 100).toFixed(2)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-500">
