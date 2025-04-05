@@ -239,14 +239,14 @@ export default function AuctionsPage() {
                       
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-500">Starting Price:</span>
-                        <span className="font-medium">${auction.starting_price}</span>
+                        <span className="font-medium">${(auction.starting_price / 100).toFixed(2)}</span>
                       </div>
                       
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-500">Current Bid:</span>
                         <span className="font-medium">
                           {auction.current_price 
-                            ? `$${auction.current_price}` 
+                            ? `$${(auction.current_price / 100).toFixed(2)}` 
                             : 'No bids yet'}
                         </span>
                       </div>
