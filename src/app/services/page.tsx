@@ -6,10 +6,27 @@ import { useState, useEffect } from 'react';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import Link from 'next/link';
+import { Database } from '@/types/supabase';
+
+type ServiceWithProvider = Database['public']['Tables']['services']['Row'] & {
+  provider?: {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    user_type?: string;
+  };
+};
+
+type Provider = {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  user_type?: string;
+};
 
 export default function ServicesPage() {
-  const [services, setServices] = useState<any[]>([]);
-  const [providers, setProviders] = useState<any[]>([]);
+  const [services, setServices] = useState<ServiceWithProvider[]>([]);
+  const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState({

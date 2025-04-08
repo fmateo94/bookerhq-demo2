@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getSupabaseClient } from '@/lib/supabaseClient';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiMail, FiEye, FiEyeOff } from 'react-icons/fi';
 import { Roboto } from 'next/font/google';
 
 const roboto = Roboto({ weight: ['400', '900'], subsets: ['latin'] });
@@ -18,6 +18,126 @@ export default function SignInForm() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const roleParam = searchParams.get('role');
+  const errorParam = searchParams.get('error');
+  const signUpHref = roleParam === 'customer' ? '/auth/signup?role=customer' : '/auth/signup';
+
+  // Set initial error state from URL parameter if present
+  useEffect(() => {
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam));
+    }
+  }, [errorParam]);
+
+  // Handle URL fragments for authentication
+  useEffect(() => {
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined') return;
+
+    // Look for authentication tokens in hash or fragment parameter
+    const hasUrlHash = window.location.hash && window.location.hash.includes('access_token');
+    const fragmentParam = searchParams.get('fragment');
+    
+    if (fragmentParam || hasUrlHash) {
+      console.log('Found authentication token data, attempting to process...');
+      
+      // If we have a fragment parameter, reconstruct the hash
+      if (fragmentParam && !hasUrlHash) {
+        console.log('Reconstructing hash from fragment parameter');
+        // Reconstruct the hash and reset the URL
+        const decodedFragment = decodeURIComponent(fragmentParam);
+        window.history.replaceState(
+          null, 
+          '', 
+          `${window.location.pathname}#${decodedFragment}`
+        );
+        // Return early, the hash change will trigger this effect again
+        return;
+      }
+      
+      const handleHashParams = async () => {
+        try {
+          setLoading(true);
+          const supabase = getSupabaseClient();
+          if (!supabase) {
+            throw new Error('Supabase client not initialized');
+          }
+          
+          // Extract tokens directly from the hash
+          let accessToken, refreshToken;
+          
+          if (hasUrlHash) {
+            // Parse hash parameters manually to ensure we get everything
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            accessToken = hashParams.get('access_token');
+            refreshToken = hashParams.get('refresh_token');
+            
+            console.log('Extracted tokens from URL hash');
+          }
+          
+          if (!accessToken) {
+            throw new Error('No access token found in URL hash');
+          }
+          
+          console.log('Setting session with access token');
+          
+          // Explicitly set the session with the tokens
+          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
+          
+          if (sessionError) {
+            console.error('Error setting session:', sessionError);
+            throw sessionError;
+          }
+          
+          if (!sessionData.session) {
+            throw new Error('Failed to create session from tokens');
+          }
+          
+          console.log('Session successfully created');
+          
+          // Get user information
+          const { data: userData, error: userError } = await supabase.auth.getUser();
+          
+          if (userError) {
+            console.error('Error getting user after setting session:', userError);
+            throw userError;
+          }
+          
+          if (!userData?.user) {
+            throw new Error('No user data returned after authentication');
+          }
+          
+          console.log('Successfully authenticated user');
+          
+          // Clear the hash from the URL
+          window.history.replaceState(
+            null, 
+            '', 
+            window.location.pathname + window.location.search
+          );
+          
+          // Redirect based on user type
+          if (userData.user.user_metadata?.user_type === 'tenant') {
+            router.push('/auth/create-business');
+          } else {
+            router.push('/dashboard');
+          }
+        } catch (error) {
+          console.error('Error processing authentication:', error);
+          setError('Authentication failed. Please try signing in again.');
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      handleHashParams();
+    }
+  }, [router, searchParams]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +223,7 @@ export default function SignInForm() {
         </h2>
         
         <p className="text-[#64748B] mb-6 text-[15px]">
-          We've sent password reset instructions to{' '}
+          We&apos;ve sent password reset instructions to{' '}
           <span className="font-medium">{email}</span>
         </p>
 
@@ -197,8 +317,8 @@ export default function SignInForm() {
       
       <div className="mt-8 text-center">
         <p className={`${roboto.className} text-[#64748B] text-[15px]`}>
-          Don't have an account?{' '}
-          <Link href="/auth/signup" className="text-black hover:text-[#4F46E5] font-medium">
+          Don&apos;t have an account?{' '}
+          <Link href={signUpHref} className="text-black hover:text-[#4F46E5] font-medium">
             Sign Up
           </Link>
         </p>

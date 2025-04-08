@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { FiArrowLeft, FiMail, FiLock, FiUser, FiPhone } from 'react-icons/fi';
+import { FiArrowLeft } from 'react-icons/fi';
 import { Roboto } from 'next/font/google';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 
@@ -33,7 +33,21 @@ export default function SignUpForm() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showRoleSelection, setShowRoleSelection] = useState(true);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const roleParam = searchParams.get('role');
+    if (roleParam === 'customer') {
+      console.log('Role parameter found: customer. Hiding role selection.');
+      setUserType('customer');
+      setShowRoleSelection(false);
+    } else {
+      console.log('No specific role parameter found. Showing role selection.');
+      setShowRoleSelection(true);
+    }
+  }, [searchParams]);
 
   const validatePassword = (pass: string) => {
     const requirements = {
@@ -137,8 +151,10 @@ export default function SignUpForm() {
         throw new Error('No user data returned after signup');
       }
 
-      // Redirect to email verification page
+      // ALWAYS redirect to email verification after sign up
+      console.log('Sign up successful, redirecting to verify-email page.');
       router.push('/auth/verify-email?email=' + encodeURIComponent(email));
+
     } catch (error) {
       console.error('Full error object:', error);
       let errorMessage = 'An error occurred during sign up';
@@ -197,6 +213,38 @@ export default function SignUpForm() {
         >
           {step === 1 && (
             <>
+              {showRoleSelection && (
+                <div className="mb-6">
+                  <label className={`${roboto.className} block text-sm font-medium text-black mb-2`}>
+                    How will you use this platform?
+                  </label>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="userType"
+                        value="customer"
+                        checked={userType === 'customer'}
+                        onChange={(e) => setUserType(e.target.value)}
+                        className="mr-2 h-4 w-4 border-2 border-black focus:ring-0 focus:ring-offset-0"
+                      />
+                      <span className={`${roboto.className} text-sm text-black`}>As a Customer</span>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="userType"
+                        value="tenant"
+                        checked={userType === 'tenant'}
+                        onChange={(e) => setUserType(e.target.value)}
+                        className="mr-2 h-4 w-4 border-2 border-black focus:ring-0 focus:ring-offset-0"
+                      />
+                      <span className={`${roboto.className} text-sm text-black`}>As a Business (Tenant)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+              
               <div>
                 <div className="relative">
                   <input

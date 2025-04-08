@@ -7,9 +7,24 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import Link from 'next/link';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
+import { Database } from '@/types/supabase';
+
+type Bid = Database['public']['Tables']['bids']['Row'];
+
+type AuctionWithDetails = Database['public']['Tables']['auctions']['Row'] & {
+  services?: Database['public']['Tables']['services']['Row'];
+  provider?: {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    user_type?: string;
+  };
+  bids?: Bid[];
+  start_time?: string; // Additional field for appointment time
+};
 
 export default function AuctionsPage() {
-  const [auctions, setAuctions] = useState<any[]>([]);
+  const [auctions, setAuctions] = useState<AuctionWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState({
@@ -83,7 +98,6 @@ export default function AuctionsPage() {
     }
     
     // Filter by status
-    const now = new Date();
     let auctionStatus = 'scheduled';
     
     if (isPast(new Date(auction.auction_end))) {
@@ -173,7 +187,6 @@ export default function AuctionsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredAuctions.map((auction) => {
-              const now = new Date();
               const auctionStart = new Date(auction.auction_start);
               const auctionEnd = new Date(auction.auction_end);
               
@@ -228,7 +241,8 @@ export default function AuctionsPage() {
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-gray-500">Appointment:</span>
                         <span className="font-medium">
-                          {format(new Date(auction.start_time), 'PPP')} at {format(new Date(auction.start_time), 'p')}
+                          {auction.start_time ? format(new Date(auction.start_time), 'PPP') : 'Date TBD'} 
+                          {auction.start_time ? ` at ${format(new Date(auction.start_time), 'p')}` : ''}
                         </span>
                       </div>
                       

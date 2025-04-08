@@ -2,24 +2,23 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format, parseISO, addDays, isBefore } from 'date-fns';
-import { Service, Availability } from '@/types/service';
+import { Availability } from '@/types/service';
 import { User } from '@supabase/supabase-js';
 import { Database } from '@/types/supabase';
 
 type ServiceRow = Database['public']['Tables']['services']['Row'];
 type AvailabilityRow = Database['public']['Tables']['availability']['Row'];
-type UserRow = Database['public']['Tables']['users']['Row'];
 
 export default function ServiceDetailPage({ params }: { params: { id: string } }) {
-  const { user, isLoading: isAuthLoading } = useAuth();
-  const [service, setService] = useState<Service | null>(null);
+  const { user } = useAuth();
+  const [service, setService] = useState<ServiceRow | null>(null);
   const [provider, setProvider] = useState<User | null>(null);
   const [availability, setAvailability] = useState<Availability[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -33,6 +32,39 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
 
   // Generate 7 days from today
   const next7Days = Array.from({ length: 7 }, (_, i) => addDays(new Date(), i));
+
+  // Handle date selection - moved before useEffect and wrapped in useCallback
+  const handleDateSelect = useCallback((date: Date) => {
+    setSelectedDate(date);
+    setSelectedTime(null);
+    
+    const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    // Find availability for the selected day
+    const dayAvailability = availability.find(slot => slot.day_of_week === dayOfWeek);
+    
+    if (dayAvailability) {
+      // Generate time slots based on service duration and provider availability
+      const startTime = parseISO(`2000-01-01T${dayAvailability.start_time}`);
+      const endTime = parseISO(`2000-01-01T${dayAvailability.end_time}`);
+      const duration = service?.duration || 30; // Default to 30 minutes if not specified
+      
+      const slots = [];
+      let currentTime = startTime;
+      
+      while (isBefore(currentTime, endTime)) {
+        const timeString = format(currentTime, 'HH:mm');
+        slots.push(timeString);
+        
+        // Add service duration minutes to current time
+        currentTime = new Date(currentTime.getTime() + duration * 60000);
+      }
+      
+      setAvailableSlots(slots);
+    } else {
+      setAvailableSlots([]);
+    }
+  }, [availability, service]);
 
   useEffect(() => {
     const fetchServiceData = async () => {
@@ -56,44 +88,24 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
           throw serviceError;
         }
         
-        const typedServiceData = serviceData as ServiceRow;
-        setService({
-          id: typedServiceData.id,
-          name: typedServiceData.name,
-          description: typedServiceData.description,
-          price: typedServiceData.price,
-          duration: typedServiceData.duration,
-          provider_id: typedServiceData.provider_id,
-          service_type: typedServiceData.service_type,
-          created_at: typedServiceData.created_at
-        });
+        setService(serviceData as ServiceRow);
 
         // Fetch provider details
-        const { data: providerData, error: providerError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', typedServiceData.provider_id)
-          .single();
+        const { data: providerData, error: providerError } = await supabase.auth.admin.getUserById(
+          serviceData.provider_id
+        );
 
         if (providerError) {
           throw providerError;
         }
         
-        const typedProviderData = providerData as UserRow;
-        setProvider({
-          id: typedProviderData.id,
-          email: typedProviderData.email || '',
-          app_metadata: typedProviderData.app_metadata || {},
-          user_metadata: typedProviderData.user_metadata || {},
-          aud: typedProviderData.aud || '',
-          created_at: typedProviderData.created_at || ''
-        });
+        setProvider(providerData.user);
 
         // Fetch provider availability
         const { data: availabilityData, error: availabilityError } = await supabase
           .from('availability')
           .select('*')
-          .eq('provider_id', typedServiceData.provider_id);
+          .eq('provider_id', serviceData.provider_id);
 
         if (availabilityError) {
           throw availabilityError;
@@ -128,40 +140,7 @@ export default function ServiceDetailPage({ params }: { params: { id: string } }
     if (params.id) {
       fetchServiceData();
     }
-  }, [params.id]);
-
-  // Handle date selection
-  const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
-    setSelectedTime(null);
-    
-    const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    
-    // Find availability for the selected day
-    const dayAvailability = availability.find(slot => slot.day_of_week === dayOfWeek);
-    
-    if (dayAvailability) {
-      // Generate time slots based on service duration and provider availability
-      const startTime = parseISO(`2000-01-01T${dayAvailability.start_time}`);
-      const endTime = parseISO(`2000-01-01T${dayAvailability.end_time}`);
-      const duration = service?.duration || 30; // Default to 30 minutes if not specified
-      
-      const slots = [];
-      let currentTime = startTime;
-      
-      while (isBefore(currentTime, endTime)) {
-        const timeString = format(currentTime, 'HH:mm');
-        slots.push(timeString);
-        
-        // Add service duration minutes to current time
-        currentTime = new Date(currentTime.getTime() + duration * 60000);
-      }
-      
-      setAvailableSlots(slots);
-    } else {
-      setAvailableSlots([]);
-    }
-  };
+  }, [params.id, handleDateSelect, next7Days]);
 
   // Handle booking creation
   const handleBookService = async () => {

@@ -87,7 +87,7 @@ export default function VerifyEmailContent() {
         
         {email ? (
           <p className={`${roboto.className} text-black text-[15px] mb-8 text-center`}>
-            We've sent a verification link to{' '}
+            We&apos;ve sent a verification link to{' '}
             <span className="font-semibold">{email}</span>. Click the link to verify your email address and complete your registration.
           </p>
         ) : (

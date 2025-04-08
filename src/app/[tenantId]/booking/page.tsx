@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
-import { format, parseISO, addDays, isBefore, startOfDay } from 'date-fns';
+import { format, parseISO, isBefore, startOfDay } from 'date-fns';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { Service, Profile, Slot } from '@/types/service';
 
@@ -15,11 +15,13 @@ type TimeSlot = {
   isAvailable: boolean;
   isAuction: boolean;
   minPrice?: number;
+  isSelectable: boolean;
 };
 
 export default function BookingPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { user } = useAuth();
   
   // Get tenantId from params, removing array if present
@@ -38,10 +40,10 @@ export default function BookingPage() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [authPromptVisible, setAuthPromptVisible] = useState(false);
 
   // For demo purposes, we're using April 2025 dates since that's when our sample data is
   // In production, this would use new Date() to start from today
-  const isDemoMode = true; // Toggle this when going to production
   
   // Generate next 7 days starting from local April 5, 2025
   const next7Days = Array.from({ length: 7 }, (_, i) => {
@@ -54,6 +56,12 @@ export default function BookingPage() {
     });
     return date;
   });
+
+  // Get today's date at the start of the day for comparison
+  const today = startOfDay(new Date());
+
+  // Filter the generated days to only include today and future dates
+  const futureDays = next7Days.filter(day => !isBefore(startOfDay(day), today));
 
   // Log timeSlots state whenever it changes
   useEffect(() => {
@@ -196,21 +204,45 @@ export default function BookingPage() {
 
       if (slotsError) throw slotsError;
 
-      // Convert slots to time slots
-      const timeSlots: TimeSlot[] = (slotsData || []).map(slot => {
-        const localTime = new Date(slot.start_time);
-        const slotTime = format(localTime, 'HH:mm');
-        
-        return {
-          slot,
-          time: slotTime,
-          isAvailable: slot.status === 'available',
-          isAuction: slot.is_auction,
-          minPrice: slot.min_price
-        };
-      });
+      // Get current local time
+      const now = new Date();
+      console.log('Filtering based on current local time:', now.toString());
 
-      console.log('Debug - Final time slots:', {
+      // Convert slots to time slots and filter out past times
+      const timeSlots: TimeSlot[] = (slotsData || [])
+        .map(slot => {
+          const slotStartTimeUTC = parseISO(slot.start_time); // Parse the UTC string
+          const localTime = format(slotStartTimeUTC, 'HH:mm'); // Format based on local time zone
+
+          // Check if the slot start time is in the future relative to now
+          const isFutureSlot = isBefore(now, slotStartTimeUTC);
+          const isAvailable = slot.status === 'available';
+          const isAuction = slot.is_auction;
+          const isSelectable = isFutureSlot && (isAvailable || isAuction);
+
+          console.log('Processing slot:', {
+            id: slot.id,
+            start_time_utc: slot.start_time,
+            parsed_utc: slotStartTimeUTC.toISOString(),
+            isFuture: isFutureSlot,
+            isAvailable,
+            isAuction,
+            isSelectable,
+            localTimeFormatted: localTime
+          });
+
+          return {
+            slot,
+            time: localTime,
+            isAvailable,
+            isAuction,
+            minPrice: slot.min_price,
+            isSelectable // Include the new flag
+          };
+        })
+        .filter(ts => ts.isSelectable); // Keep only selectable slots (future and available/auction)
+
+      console.log('Debug - Final filtered time slots:', {
         total: timeSlots.length,
         slots: timeSlots.map(slot => ({
           time: slot.time,
@@ -250,14 +282,21 @@ export default function BookingPage() {
 
   const handleBooking = async () => {
     console.log('>>> handleBooking started');
+    setError(null);
+    setSuccessMessage(null);
+    setAuthPromptVisible(false);
 
-    // Restore Guard Clauses
-    if (!selectedSlot) { // Check if selectedSlot itself exists
+    if (!user) {
+      console.log('User not logged in. Showing auth prompt.');
+      setAuthPromptVisible(true);
+      return;
+    }
+
+    if (!selectedSlot) {
       setError('Please select a time slot first.');
       console.error('Booking attempt without selected slot.', selectedSlot);
       return;
     }
-    // Now TypeScript knows selectedSlot is a valid Slot object
 
     if (!service || !provider) {
       setError('Service or provider details are missing.');
@@ -266,41 +305,31 @@ export default function BookingPage() {
     }
 
     setBookingLoading(true);
-    setError(null);
-    setSuccessMessage(null);
 
     console.log('Booking details:', {
-      selectedSlotId: selectedSlot.id, // Use selectedSlot directly
-      startTime: selectedSlot.start_time, // Use selectedSlot directly
+      selectedSlotId: selectedSlot.id,
+      startTime: selectedSlot.start_time,
       serviceId: service.id,
       providerId: provider.id,
-      tenantId: service.tenant_id // Assuming tenant_id is on service
+      tenantId: service.tenant_id
     });
 
     try {
       const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase client not initialized');
 
-      // Restore dynamic user fetching and data preparation
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw new Error(`Authentication error: ${userError.message}`);
-      if (!user) throw new Error('User not logged in. Please sign in to book.');
-
-      console.log('User details:', { userId: user.id });
-
       const bookingData = {
         slot_id: selectedSlot.id,
-        user_id: user.id, // Customer ID
+        user_id: user.id,
         tenant_id: service.tenant_id,
         service_id: service.id,
-        provider_profile_id: provider.id, // Provider Profile ID
+        provider_profile_id: provider.id,
         status: 'confirmed', 
         price_paid: service.base_price ?? 0, 
       };
 
       console.log('Attempting to insert booking with this exact data:', bookingData);
 
-      // Insert into bookings table
       const { data: bookingResult, error: bookingInsertError } = await supabase
         .from('bookings')
         .insert(bookingData)
@@ -317,7 +346,6 @@ export default function BookingPage() {
         throw new Error('Booking record was not created, but no error was reported.');
       }
 
-      // Restore slot update logic
       console.log('Attempting to update slot status:', { slotId: selectedSlot.id });
       const { error: slotUpdateError } = await supabase
         .from('slots')
@@ -333,7 +361,6 @@ export default function BookingPage() {
       setSuccessMessage('Booking confirmed successfully!');
       console.log('Booking successful for slot:', selectedSlot.id);
       
-      // Restore UI updates
       if (selectedDate) {
         await fetchSlots(selectedDate, service, provider);
       }
@@ -453,11 +480,11 @@ export default function BookingPage() {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Date</h3>
           <div className="grid grid-cols-7 gap-2">
-            {next7Days.map((date) => {
+            {futureDays.map((date) => {
               const isSelected = selectedDate && 
                 startOfDay(date).getTime() === startOfDay(selectedDate).getTime();
               
-              const dateISOString = date.toISOString(); // Get the ISO string
+              const dateISOString = date.toISOString();
 
               return (
                 <button
@@ -517,31 +544,48 @@ export default function BookingPage() {
                         key={`${slot.time}-${index}`}
                         onClick={() => {
                           console.log('Slot selected:', slot);
-                          setSelectedSlot(slot.slot);
+                          if (slot.isAuction && slot.slot) {
+                            console.log(`Redirecting to bid page for slot: ${slot.slot.id}`)
+                            router.push(`/${tenantId}/bid/${slot.slot.id}`); 
+                          } else {
+                            setSelectedSlot(slot.slot);
+                          }
                         }}
-                        disabled={!slot.isAvailable}
-                        className={`p-3 text-center rounded-lg transition-colors ${
+                        disabled={!slot.isSelectable}
+                        className={`group p-3 text-center rounded-lg transition-colors relative ${
                           selectedSlot?.id === slot.slot?.id
                             ? 'bg-gray-900 text-white'
-                            : slot.isAvailable
-                            ? slot.isAuction
-                              ? 'bg-yellow-50 border-yellow-200 border hover:border-yellow-300'
-                              : 'bg-white border hover:border-gray-300'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : slot.isSelectable
+                              ? slot.isAuction
+                                ? 'bg-yellow-50 border-yellow-200 border hover:border-yellow-300'
+                                : 'bg-white border hover:border-gray-300'
+                              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         }`}
+                        title={undefined}
                       >
-                        <div>{slot.time}</div>
-                        {slot.isAuction && slot.minPrice && (
-                          <div className="text-xs mt-1">
-                            Min: ${(slot.minPrice / 100).toFixed(2)}
-                          </div>
+                        <div>
+                           <div className={`${slot.isAuction ? 'line-through' : ''}`}>{slot.time}</div>
+                           {slot.isAuction && slot.minPrice && (
+                             <div className="text-xs mt-1">
+                               Min: ${(slot.minPrice / 100).toFixed(2)}
+                             </div>
+                           )}
+                        </div>
+                        {slot.isAuction && (
+                          <span 
+                            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2 py-1 
+                                       bg-gray-800 text-white text-xs rounded opacity-0 
+                                       group-hover:opacity-100 transition-opacity pointer-events-none"
+                          >
+                            Available for auction
+                          </span>
                         )}
                       </button>
                     );
                   })}
                 </div>
                 <p className="text-sm text-gray-500 mt-4">
-                  Found {timeSlots.length} available slots for {format(selectedDate, 'MMMM d, yyyy')}
+                  Found {timeSlots.length} available or auction slots for {format(selectedDate, 'MMMM d, yyyy')}
                 </p>
               </div>
             )}
@@ -562,6 +606,19 @@ export default function BookingPage() {
             </div>
           )}
 
+          {/* Authentication Prompt */} 
+          {authPromptVisible && (
+            <div className="mb-4 p-4 w-full max-w-md bg-blue-100 text-blue-800 rounded-lg text-center">
+              <p className="font-semibold">Please sign in to book.</p>
+              <p className="text-sm mt-1">You need an account to confirm your appointment.</p>
+              <div className="mt-3">
+                 <Link href="/auth/signin?role=customer" className="text-blue-600 hover:text-blue-800 font-medium">
+                   Sign In / Sign Up
+                 </Link>
+              </div>
+            </div>
+          )}
+          
           <button
             onClick={handleBooking}
             disabled={!selectedDate || !selectedSlot || bookingLoading}

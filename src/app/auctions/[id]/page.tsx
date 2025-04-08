@@ -8,7 +8,7 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { format, formatDistanceToNow, isAfter, isBefore, isPast } from 'date-fns';
+import { format, formatDistanceToNow, isAfter, isPast } from 'date-fns';
 import { User } from '@supabase/supabase-js';
 import { Database } from '@/types/supabase';
 
@@ -33,7 +33,7 @@ export interface AuctionWithDetails extends AuctionRow {
 }
 
 export default function AuctionDetailPage({ params }: { params: { id: string } }) {
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { user } = useAuth();
   const [auction, setAuction] = useState<AuctionDetails | null>(null);
   const [service, setService] = useState<ServiceRow | null>(null);
   const [provider, setProvider] = useState<User | null>(null);
@@ -50,7 +50,6 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
   const getAuctionStatus = (auction: AuctionDetails | null) => {
     if (!auction) return null;
     
-    const now = new Date();
     const auctionStart = new Date(auction.auction_start);
     const auctionEnd = new Date(auction.auction_end);
     
@@ -343,7 +342,7 @@ export default function AuctionDetailPage({ params }: { params: { id: string } }
       }
 
       // Create the bid
-      const { data: bidData, error: bidError } = await supabase
+      const { error: bidError } = await supabase
         .from('bids')
         .insert([
           {

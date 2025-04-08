@@ -2,20 +2,176 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+type ProfileData = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone_number?: string;
+  user_type: string;
+  created_at: string;
+};
+
+// Updated type definition to handle business bookings view
+type BookingWithDetails = {
+  id: string;
+  user_id?: string;
+  customer_id?: string;
+  slot_id: string;
+  service_id: string;
+  provider_profile_id?: string;
+  provider_id?: string; // From slots table
+  status?: string;
+  created_at: string;
+  price_paid?: number;
+  tenant_id?: string;
+  // Joined data from slots
+  start_time?: string;
+  end_time?: string;
+  // Joined data from profiles/customers
+  customer_name?: string;
+  customer_phone?: string;
+  // Other display fields
+  service_name?: string;
+  provider_name?: string;
+};
+
+// Updated type definition for business bids view
+type BidWithDetails = {
+  id: string;
+  user_id: string;
+  slot_id: string;
+  bid_amount: number;
+  created_at: string;
+  status?: string;
+  tenant_id?: string;
+  // Joined data from slots
+  service_id?: string;
+  provider_id?: string;
+  start_time?: string;
+  end_time?: string;
+  is_auction?: boolean;
+  min_price?: number;
+  // Bid competition info
+  current_price?: number;
+  is_winning?: boolean;
+  // Customer info
+  customer_name?: string;
+  customer_phone?: string;
+  // Service and provider info
+  service_name?: string;
+  provider_name?: string;
+};
+
+// Simple DataTable component
+const DataTable = ({ columns, data }: { 
+  columns: Array<{
+    name: string;
+    selector?: (row: any) => string | JSX.Element;
+    sortable?: boolean;
+    cell?: (row: any) => JSX.Element;
+  }>, 
+  data: any[] 
+}) => {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead>
+          <tr>
+            {columns.map((column, i) => (
+              <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{column.name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {data.map((row, i) => (
+            <tr key={i}>
+              {columns.map((column, j) => (
+                <td key={j} className="px-6 py-4 whitespace-nowrap">{column.cell ? column.cell(row) : column.selector ? column.selector(row) : ''}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// Define simple UI components since the imported ones aren't available
+const Button = ({ 
+  children, 
+  variant, 
+  size, 
+  asChild, 
+  onClick 
+}: { 
+  children: React.ReactNode; 
+  variant?: string; 
+  size?: string; 
+  asChild?: boolean; 
+  onClick?: () => void; 
+}) => {
+  const className = `
+    ${variant === 'destructive' ? 'bg-red-500 hover:bg-red-600 text-white' : 
+      variant === 'outline' ? 'border border-gray-300 hover:bg-gray-100' : 
+      'bg-blue-500 hover:bg-blue-600 text-white'}
+    ${size === 'sm' ? 'px-2 py-1 text-xs' : 'px-4 py-2 text-sm'}
+    rounded-md font-medium transition-colors
+  `;
+
+  if (asChild) {
+    return <div className={className}>{children}</div>;
+  }
+
+  return (
+    <button className={className} onClick={onClick}>
+      {children}
+    </button>
+  );
+};
+
+// Simple table components
+const Table = ({ children }: { children: React.ReactNode }) => (
+  <table className="min-w-full divide-y divide-gray-200">{children}</table>
+);
+
+const TableHeader = ({ children }: { children: React.ReactNode }) => (
+  <thead className="bg-gray-50">{children}</thead>
+);
+
+const TableBody = ({ children }: { children: React.ReactNode }) => (
+  <tbody className="divide-y divide-gray-200">{children}</tbody>
+);
+
+const TableRow = ({ children }: { children: React.ReactNode }) => (
+  <tr>{children}</tr>
+);
+
+const TableHead = ({ children }: { children: React.ReactNode }) => (
+  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{children}</th>
+);
+
+const TableCell = ({ children }: { children: React.ReactNode }) => (
+  <td className="px-6 py-4 whitespace-nowrap">{children}</td>
+);
+
 export default function Dashboard() {
   const { user, isLoading } = useAuth();
-  const [profileData, setProfileData] = useState<any>(null);
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [bids, setBids] = useState<any[]>([]);
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
+  const [bids, setBids] = useState<BidWithDetails[]>([]);
   const [activeTab, setActiveTab] = useState('appointments');
   const router = useRouter();
+  
+  // Use a ref to store the cancelBooking function that needs access to fetchBookings
+  const cancelBookingRef = useRef<(bookingId: string) => Promise<void>>();
 
   useEffect(() => {
     // Redirect if not logged in
@@ -32,9 +188,9 @@ export default function Dashboard() {
       // Fetch user profile
       const fetchProfile = async () => {
         const { data, error } = await supabase
-          .from('users')
+          .from('profiles')
           .select('*')
-          .eq('id', user.id)
+          .eq('user_id', user.id)
           .single();
 
         if (error) {
@@ -44,52 +200,330 @@ export default function Dashboard() {
         }
       };
 
-      // Fetch appointments
-      const fetchAppointments = async () => {
-        const { data, error } = await supabase
-          .from('appointments')
-          .select(`
-            *,
-            services:service_id(*),
-            provider:provider_id(*)
-          `)
-          .eq('customer_id', user.id)
-          .order('start_time', { ascending: true });
+      // Fetch all bookings for this business (for admin/business owners)
+      const fetchBookings = async () => {
+        try {
+          // Get basic booking data with slots but without trying the join
+          const { data: bookingsData, error: bookingsError } = await supabase
+            .from('bookings')
+            .select('*, slots(*)')
+            .order('created_at', { ascending: false })
+            .limit(100);
 
-        if (error) {
-          console.error('Error fetching appointments:', error);
-        } else {
-          setAppointments(data || []);
+          if (bookingsError) {
+            console.error('Error fetching bookings:', bookingsError);
+            return;
+          }
+
+          console.log('Raw bookings data:', bookingsData);
+          
+          // Get a direct query from customers table
+          const { data: allCustomers, error: customersError } = await supabase
+            .from('customers')
+            .select('*');
+          
+          if (customersError) {
+            console.error('Error fetching all customers:', customersError);
+          }
+          
+          console.log('All customers raw data:', JSON.stringify(allCustomers));
+          
+          // Make a direct map of customers by ID
+          const customerMap: Record<string, any> = {};
+          if (allCustomers && allCustomers.length > 0) {
+            allCustomers.forEach(c => {
+              customerMap[c.id] = c;
+            });
+            console.log('Customer map built from database with keys:', Object.keys(customerMap));
+          }
+          
+          // Collect service and provider IDs
+          const serviceIds = bookingsData
+            .map(booking => booking.service_id)
+            .filter(Boolean);
+            
+          const providerIds = bookingsData
+            .map(booking => booking.provider_profile_id)
+            .filter(Boolean);
+            
+          // Fetch services
+          const { data: servicesData, error: servicesError } = await supabase
+            .from('services')
+            .select('*');
+            
+          if (servicesError) {
+            console.error('Error fetching services:', servicesError);
+          }
+          
+          // Fetch providers (profiles)
+          const { data: providersData, error: providersError } = await supabase
+            .from('profiles')
+            .select('*');
+            
+          if (providersError) {
+            console.error('Error fetching providers:', providersError);
+          }
+          
+          // Create maps
+          const serviceMap: Record<string, any> = {};
+          if (servicesData) {
+            servicesData.forEach(service => {
+              if (service.id) {
+                serviceMap[service.id] = service;
+              }
+            });
+          }
+          
+          const providerMap: Record<string, any> = {};
+          if (providersData) {
+            providersData.forEach(provider => {
+              if (provider.id) {
+                providerMap[provider.id] = provider;
+              }
+            });
+          }
+          
+          // Process bookings
+          const processedBookings = bookingsData.map(booking => {
+            const slot = booking.slots || {};
+            
+            // Debug if customer ID exists in our map
+            console.log(`Booking ${booking.id} has customer_id ${booking.customer_id}, exists in map: ${Boolean(customerMap[booking.customer_id])}`);
+            if (booking.customer_id) {
+              console.log('Customer data for this ID:', customerMap[booking.customer_id]);
+            }
+            
+            // Get customer from the map
+            const customer = booking.customer_id ? customerMap[booking.customer_id] : null;
+            
+            // Get service data  
+            const service = booking.service_id ? serviceMap[booking.service_id] : null;
+            
+            // Get provider data
+            const provider = booking.provider_profile_id ? providerMap[booking.provider_profile_id] : null;
+            
+            // Format customer name from actual customer data
+            const customerName = customer
+              ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
+              : 'Unknown';
+            
+            const serviceName = service 
+              ? service.name 
+              : `Service #${booking.service_id?.substring(0, 8) || 'Unknown'}`;
+              
+            const providerName = provider 
+              ? `${provider.first_name || ''} ${provider.last_name || ''}`.trim() 
+              : `Provider #${booking.provider_profile_id?.substring(0, 8) || 'Unknown'}`;
+            
+            // Format date and time
+            const startTime = slot.start_time ? new Date(slot.start_time) : null;
+            const formattedTime = startTime ? startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+            const formattedDate = startTime ? startTime.toLocaleDateString() : 'N/A';
+            
+            return {
+              ...booking,
+              customer_name: customerName,
+              service_name: serviceName,
+              provider_name: providerName,
+              slot_date: formattedDate,
+              slot_time: formattedTime
+            };
+          });
+          
+          console.log('Final processed bookings:', processedBookings);
+          setBookings(processedBookings);
+        } catch (error) {
+          console.error('Error in fetchBookings:', error);
         }
       };
 
-      // Fetch bids
+      // Fetch bids based on user role
       const fetchBids = async () => {
-        const { data, error } = await supabase
-          .from('bids')
-          .select(`
-            *,
-            auctions:auction_id(
-              *,
-              services:service_id(*),
-              provider:provider_id(*)
-            )
-          `)
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching bids:', error);
-        } else {
-          setBids(data || []);
+        try {
+          console.log("Attempting direct bids query");
+          
+          // Simple direct query with no filters to check if we can access any bids
+          const { data: allBids, error: allBidsError } = await supabase
+            .from('bids')
+            .select('*');
+            
+          console.log("Direct query of all bids (no filters):", allBids?.length || 0, allBids);
+          
+          if (allBidsError) {
+            console.error("Error with unfiltered bids query:", allBidsError);
+            return;
+          }
+          
+          // If we can access bids, use them directly
+          if (allBids && allBids.length > 0) {
+            console.log("Found bids in the database, processing them");
+            
+            // Get the slot information for these bids
+            const slotIds = allBids.map(bid => bid.slot_id);
+            
+            const { data: slotsData, error: slotsError } = await supabase
+              .from('slots')
+              .select('id, start_time, end_time, service_id, provider_id, is_auction, min_price')
+              .in('id', slotIds);
+              
+            if (slotsError) {
+              console.error('Error fetching slots for bids:', slotsError);
+              setBids(allBids);
+              return;
+            }
+            
+            // Get customer information for better display
+            const customerIds = allBids
+              .map(bid => bid.user_id)
+              .filter(id => id); // Remove null/undefined
+              
+            const { data: customersData, error: customersError } = await supabase
+              .from('profiles')
+              .select('id, user_id, first_name, last_name, phone_number')
+              .in('user_id', customerIds);
+              
+            if (customersError) {
+              console.error('Error fetching customer profiles for bids:', customersError);
+            }
+            
+            // Get service information
+            const bidServiceIds = Array.from(new Set([
+              ...(slotsData?.map(slot => slot.service_id).filter(Boolean as any) || []),
+              ...allBids.map(bid => bid.service_id).filter(Boolean as any)
+            ]));
+            
+            let bidServicesData: any[] = [];
+            if (bidServiceIds.length > 0) {
+              console.log('Fetching bid services with IDs:', bidServiceIds);
+              const { data: fetchedServicesData, error: servicesError } = await supabase
+                .from('services')
+                .select('id, name')
+                .in('id', bidServiceIds);
+                
+              if (servicesError) {
+                console.error('Error fetching services:', servicesError);
+              } else {
+                console.log('Retrieved bid services:', fetchedServicesData?.length || 0);
+                bidServicesData = fetchedServicesData || [];
+              }
+            }
+            
+            // Get provider information
+            const bidProviderIds = Array.from(new Set([
+              ...(slotsData?.map(slot => slot.provider_id).filter(Boolean as any) || []),
+              ...allBids.map(bid => bid.provider_id).filter(Boolean as any)
+            ]));
+            
+            let bidProvidersData: any[] = [];
+            if (bidProviderIds.length > 0) {
+              console.log('Fetching bid providers with IDs:', bidProviderIds);
+              const { data: fetchedProvidersData, error: providersError } = await supabase
+                .from('profiles')
+                .select('id, user_id, first_name, last_name')
+                .in('id', bidProviderIds);
+                
+              if (providersError) {
+                console.error('Error fetching provider profiles:', providersError);
+              } else {
+                console.log('Retrieved bid providers:', fetchedProvidersData?.length || 0);
+                bidProvidersData = fetchedProvidersData || [];
+              }
+            }
+            
+            // Get highest bid for each slot
+            const highestBidsBySlot: Record<string, number> = {};
+            allBids.forEach(bid => {
+              if (!highestBidsBySlot[bid.slot_id] || bid.bid_amount > highestBidsBySlot[bid.slot_id]) {
+                highestBidsBySlot[bid.slot_id] = bid.bid_amount;
+              }
+            });
+            
+            // Combine all the data
+            const combinedBids = allBids.map(bid => {
+              const slot = slotsData?.find(slot => slot.id === bid.slot_id);
+              const customer = customersData?.find(c => c.user_id === bid.user_id);
+              const service = bidServicesData.find(s => s.id === slot?.service_id);
+              const provider = bidProvidersData.find(p => p.id === slot?.provider_id);
+              
+              const highestBid = highestBidsBySlot[bid.slot_id];
+              const isWinning = highestBid && bid.bid_amount >= highestBid;
+              
+              return {
+                ...bid,
+                service_id: slot?.service_id,
+                provider_id: slot?.provider_id,
+                is_auction: slot?.is_auction,
+                min_price: slot?.min_price,
+                start_time: slot?.start_time,
+                end_time: slot?.end_time,
+                current_price: highestBid,
+                is_winning: isWinning,
+                service_name: service?.name || `Service #${slot?.service_id || bid.service_id}`,
+                provider_name: provider ? 
+                  `${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 
+                  `Provider #${slot?.provider_id || bid.provider_id}` : 
+                  `Provider #${slot?.provider_id || bid.provider_id}`,
+                customer_name: customer ? 
+                  `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 
+                  'Unknown' : 
+                  'Unknown',
+                customer_phone: customer?.phone_number,
+                slot_time: slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
+                slot_date: slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date',
+                status: bid.bid_amount === highestBid ? 'winning' : 'losing'
+              };
+            });
+            
+            console.log("Final prepared bids:", combinedBids.length);
+            setBids(combinedBids);
+          } else {
+            console.log("No bids found in direct query");
+            setBids([]);
+          }
+        } catch (error) {
+          console.error('Error in fetchBids:', error);
+          setBids([]); 
         }
       };
 
+      // Define the cancelBooking function with access to fetchBookings
+      cancelBookingRef.current = async (bookingId: string) => {
+        try {
+          const supabase = getSupabaseClient();
+          if (!supabase) return;
+
+          const { data, error } = await supabase
+            .from('bookings')
+            .update({ status: 'cancelled' })
+            .eq('id', bookingId);
+
+          if (error) {
+            console.error('Error cancelling booking:', error);
+            return;
+          }
+          
+          // Refresh bookings after cancellation
+          await fetchBookings();
+        } catch (error) {
+          console.error('Error in handleCancelBooking:', error);
+        }
+      };
+
+      // Call the data fetching functions
       fetchProfile();
-      fetchAppointments();
+      fetchBookings();
       fetchBids();
     }
   }, [user]);
+  
+  // Public handler that uses the ref function
+  const handleCancelBooking = (bookingId: string) => {
+    if (cancelBookingRef.current) {
+      cancelBookingRef.current(bookingId);
+    } else {
+      console.error('Cancel booking function not initialized yet');
+    }
+  };
 
   if (isLoading || !user) {
     return (
@@ -133,9 +567,14 @@ export default function Dashboard() {
                 activeTab === 'auctions'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
             >
-              My Bids
+              <span>My Bids</span>
+              {bids.length > 0 && (
+                <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                  {bids.length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setActiveTab('profile')}
@@ -155,7 +594,14 @@ export default function Dashboard() {
           {activeTab === 'appointments' && (
             <div>
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Your Appointments</h2>
+                <h2 className="text-lg font-semibold">
+                  {profileData?.user_type === 'admin' 
+                    ? 'All Business Appointments' 
+                    : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
+                      ? 'Your Client Appointments'
+                      : 'Your Appointments'
+                  }
+                </h2>
                 <Link 
                   href="/services" 
                   className="bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
@@ -164,9 +610,16 @@ export default function Dashboard() {
                 </Link>
               </div>
               
-              {appointments.length === 0 ? (
+              {bookings.length === 0 ? (
                 <div className="text-center py-10">
-                  <p className="text-gray-500">You don't have any appointments yet.</p>
+                  <p className="text-gray-500">
+                    {profileData?.user_type === 'admin' 
+                      ? 'No appointments found for the business.' 
+                      : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
+                        ? 'You don\'t have any client appointments yet.'
+                        : 'You don\'t have any appointments yet.'
+                    }
+                  </p>
                   <Link 
                     href="/services" 
                     className="mt-4 inline-block bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
@@ -175,65 +628,32 @@ export default function Dashboard() {
                   </Link>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Service
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Provider
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Date & Time
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {appointments.map((appointment) => (
-                        <tr key={appointment.id}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{appointment.services?.name || 'Unknown Service'}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {appointment.provider?.first_name} {appointment.provider?.last_name}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {new Date(appointment.start_time).toLocaleDateString()} at{' '}
-                              {new Date(appointment.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              appointment.status === 'confirmed' 
-                                ? 'bg-green-100 text-green-800' 
-                                : appointment.status === 'pending' 
-                                ? 'bg-yellow-100 text-yellow-800' 
-                                : appointment.status === 'cancelled' 
-                                ? 'bg-red-100 text-red-800' 
-                                : 'bg-blue-100 text-blue-800'
-                            }`}>
-                              {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <button className="text-blue-600 hover:text-blue-800">View Details</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable columns={[
+                  { name: 'Date', selector: row => row.slot_date, sortable: true },
+                  { name: 'Time', selector: row => row.slot_time },
+                  { name: 'Service', selector: row => row.service_name },
+                  { name: 'Provider', selector: row => row.provider_name },
+                  { name: 'Customer', selector: row => row.customer_name },
+                  { name: 'Status', selector: row => row.status, sortable: true },
+                  {
+                    name: 'Actions',
+                    cell: row => (
+                      <div className="flex gap-2">
+                        <button className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors">
+                          <Link href={`/booking/${row.id}`}>View</Link>
+                        </button>
+                        {row.status === 'pending' && (
+                          <button
+                            className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 text-xs rounded-md font-medium transition-colors"
+                            onClick={() => handleCancelBooking(row.id)}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    ),
+                  },
+                ]} data={bookings} />
               )}
             </div>
           )}
@@ -241,7 +661,14 @@ export default function Dashboard() {
           {activeTab === 'auctions' && (
             <div>
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Your Auction Bids</h2>
+                <h2 className="text-lg font-semibold">
+                  {profileData?.user_type === 'admin' 
+                    ? 'All Auction Bids' 
+                    : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
+                      ? 'Bids on Your Services'
+                      : 'Your Auction Bids'
+                  }
+                </h2>
                 <Link 
                   href="/auctions" 
                   className="bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
@@ -252,7 +679,14 @@ export default function Dashboard() {
               
               {bids.length === 0 ? (
                 <div className="text-center py-10">
-                  <p className="text-gray-500">You haven't placed any bids yet.</p>
+                  <p className="text-gray-500">
+                    {profileData?.user_type === 'admin' 
+                      ? 'No auction bids found for the business.' 
+                      : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
+                        ? 'No bids on your services yet.'
+                        : 'You haven\'t placed any bids yet.'
+                    }
+                  </p>
                   <Link 
                     href="/auctions" 
                     className="mt-4 inline-block bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
@@ -261,76 +695,28 @@ export default function Dashboard() {
                   </Link>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Service
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Provider
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Your Bid
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Current Price
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {bids.map((bid) => (
-                        <tr key={bid.id}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {bid.auctions?.services?.name || 'Unknown Service'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {bid.auctions?.provider?.first_name} {bid.auctions?.provider?.last_name}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              ${(bid.amount / 100).toFixed(2)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              ${bid.auctions?.current_price ? (bid.auctions.current_price / 100).toFixed(2) : 'N/A'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              bid.auctions?.current_winner_id === user.id
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {bid.auctions?.current_winner_id === user.id ? 'Winning' : 'Outbid'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <Link href={`/auctions/${bid.auction_id}`} className="text-blue-600 hover:text-blue-800">
-                              View Auction
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable columns={[
+                  { name: 'Date', selector: row => row.slot_date, sortable: true },
+                  { name: 'Time', selector: row => row.slot_time },
+                  { name: 'Service', selector: row => row.service_name },
+                  { name: 'Provider', selector: row => row.provider_name },
+                  { name: 'Your Bid', selector: row => `$${row.current_price ? (row.current_price / 100).toFixed(2) : 'N/A'}`, sortable: true },
+                  { name: 'Status', selector: row => row.status, sortable: true },
+                  {
+                    name: 'Actions',
+                    cell: row => (
+                      <div className="flex gap-2">
+                        <button className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors">
+                          <Link href={`/bid/${row.id}`}>View</Link>
+                        </button>
+                      </div>
+                    ),
+                  },
+                ]} data={bids} />
               )}
             </div>
           )}
-
+          
           {activeTab === 'profile' && (
             <div>
               <h2 className="text-lg font-semibold mb-4">Your Profile</h2>
@@ -349,7 +735,7 @@ export default function Dashboard() {
                         </div>
                         <div className="mb-2">
                           <span className="text-sm text-gray-500">Email:</span>
-                          <p className="text-sm font-medium">{profileData.email}</p>
+                          <p className="text-sm font-medium">{user.email}</p>
                         </div>
                         <div>
                           <span className="text-sm text-gray-500">Phone:</span>

@@ -1,8 +1,6 @@
 import type { Database } from './supabase';
 import { User } from '@supabase/supabase-js';
 
-type ServiceRow = Database['public']['Tables']['services']['Row'];
-type AvailabilityRow = Database['public']['Tables']['availability']['Row'];
 type AppointmentRow = Database['public']['Tables']['appointments']['Row'];
 
 export type Service = {
@@ -88,6 +86,6 @@ export type Tenant = {
       close: string;
     };
   };
-  settings?: Record<string, any>;
+  settings?: Record<string, string | number | boolean | null>;
   created_at: string;
 }; 

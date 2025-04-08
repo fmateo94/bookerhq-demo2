@@ -103,3 +103,21 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - Use 'gpt-4o' as the model name for OpenAI's GPT-4 with vision capabilities
 
 # Scratchpad
+
+## Task: Integrate Auction Slots into Booking Flow
+
+[X] Modify booking page to show available and auction slots.
+[X] Filter dates and times to only show future options.
+[X] Add strikethrough styling for auction slots.
+[X] Add hover tooltip for auction slots.
+
+## Task: Create Bid Placement Flow
+
+[ ] Modify booking page: Redirect to bid page when an auction slot is selected.
+[ ] Create new bid page component (`src/app/[tenantId]/bid/[slotId]/page.tsx`).
+[ ] Fetch slot, service, provider details on the bid page.
+[ ] Display details and bid input (pre-filled with starting bid).
+[ ] Implement bid placement logic (create `bids` record).
+[ ] Define `bids` table schema (if needed).
+[ ] Provide user feedback on bid placement.
+[ ] Handle redirection after bid placement.

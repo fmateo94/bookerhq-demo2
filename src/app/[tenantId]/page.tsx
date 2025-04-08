@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/ui/Navbar';
