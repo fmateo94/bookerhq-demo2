@@ -1,14 +1,13 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { Database } from '@/types';
 
 export async function GET(request: Request) {
-  const { searchParams, hash } = new URL(request.url);
-  const code = searchParams.get('code');
-  const error = searchParams.get('error');
-  const error_description = searchParams.get('error_description');
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get('code');
+  const error = requestUrl.searchParams.get('error');
+  const error_description = requestUrl.searchParams.get('error_description');
   
   console.log('Auth callback route, url:', request.url);
   console.log('Auth callback params:',  { code: code?.substring(0, 10) + '...', error, error_description });

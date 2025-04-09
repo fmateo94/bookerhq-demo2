@@ -8,7 +8,6 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@/components/ui/Button';
 
 type ProfileData = {
   id: string;
@@ -208,15 +207,6 @@ export default function Dashboard() {
             console.log('Customer map built from database with keys:', Object.keys(customerMap));
           }
           
-          // Collect service and provider IDs
-          const serviceIds = bookingsData
-            .map(booking => booking.service_id)
-            .filter(Boolean);
-            
-          const providerIds = bookingsData
-            .map(booking => booking.provider_profile_id)
-            .filter(Boolean);
-            
           // Fetch services
           const { data: servicesData, error: servicesError } = await supabase
             .from('services')
@@ -356,8 +346,7 @@ export default function Dashboard() {
             
             // Get service information
             const bidServiceIds = Array.from(new Set([
-              ...(slotsData?.map(slot => slot.service_id).filter(Boolean as any) || []),
-              // ...allBids.map(bid => bid.service_id).filter(Boolean as any) // bids table doesn't have service_id
+              ...(slotsData?.map(slot => slot.service_id).filter(Boolean) || []),
             ]));
             
             let bidServicesData: Service[] = []; // Use Service type
@@ -378,8 +367,7 @@ export default function Dashboard() {
             
             // Get provider information
             const bidProviderIds = Array.from(new Set([
-              ...(slotsData?.map(slot => slot.provider_id).filter(Boolean as any) || []),
-              // ...allBids.map(bid => bid.provider_id).filter(Boolean as any) // bids table doesn't have provider_id
+              ...(slotsData?.map(slot => slot.provider_id).filter(Boolean) || []),
             ]));
             
             let bidProvidersData: Profile[] = []; // Use Profile type
@@ -461,13 +449,13 @@ export default function Dashboard() {
           const supabase = getSupabaseClient();
           if (!supabase) return;
 
-          const { data, error } = await supabase
+          const { data: _, error: cancelError } = await supabase
             .from('bookings')
             .update({ status: 'cancelled' })
             .eq('id', bookingId);
 
-          if (error) {
-            console.error('Error cancelling booking:', error);
+          if (cancelError) { 
+            console.error('Error cancelling booking:', cancelError);
             return;
           }
           
