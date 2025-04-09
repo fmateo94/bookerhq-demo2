@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { FiMail, FiEye, FiEyeOff } from 'react-icons/fi';
 import { Roboto } from 'next/font/google';
 
@@ -20,9 +19,7 @@ export default function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const roleParam = searchParams.get('role');
   const errorParam = searchParams.get('error');
-  const signUpHref = roleParam === 'customer' ? '/auth/signup?role=customer' : '/auth/signup';
 
   // Set initial error state from URL parameter if present
   useEffect(() => {
