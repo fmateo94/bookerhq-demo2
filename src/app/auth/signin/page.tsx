@@ -2,10 +2,7 @@
 
 import Link from 'next/link';
 import SignInForm from '@/components/auth/SignInForm';
-import { Comfortaa } from 'next/font/google';
 import { Suspense } from 'react';
-
-const comfortaa = Comfortaa({ subsets: ['latin'] });
 
 export default function SignInPage() {
   return (
@@ -18,7 +15,7 @@ export default function SignInPage() {
           <SignInForm />
         </Suspense>
         <p className="mt-6 text-center text-sm text-gray-600">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
             Sign up
           </Link>

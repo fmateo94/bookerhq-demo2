@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import SignUpForm from '@/components/auth/SignUpForm';
-import { Manrope } from 'next/font/google';
+// import { Manrope } from 'next/font/google'; // Remove unused import
 import { Suspense } from 'react';
 
-const manrope = Manrope({ subsets: ['latin'] });
+// const manrope = Manrope({ subsets: ['latin'] }); // Remove unused variable
 
 export default function SignUpPage() {
   return (
