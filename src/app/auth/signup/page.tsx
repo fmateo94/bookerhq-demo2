@@ -1,24 +1,28 @@
 'use client';
 
+import Link from 'next/link';
 import SignUpForm from '@/components/auth/SignUpForm';
 import { Manrope } from 'next/font/google';
+import { Suspense } from 'react';
 
 const manrope = Manrope({ subsets: ['latin'] });
 
 export default function SignUpPage() {
   return (
-    <div className="min-h-screen flex bg-white">
-      {/* Form */}
-      <div className="flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-20 xl:px-24">
-        <div className="mx-auto w-full max-w-[420px]">
-          <h1 className={`${manrope.className} text-[36px] font-normal text-black mb-2 text-center tracking-[-0.015em]`}>
-            Register
-          </h1>
-          <p className="text-[#64748B] text-center mb-10 text-[15px]">
-            Create your account to get started
-          </p>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md px-8 py-10 bg-white shadow-lg rounded-lg">
+        <h1 className="text-2xl font-bold text-center text-gray-900 mb-6">
+          Create Account
+        </h1>
+        <Suspense fallback={<div className="text-center py-4">Loading form...</div>}>
           <SignUpForm />
-        </div>
+        </Suspense>
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Already have an account?{' '}
+          <Link href="/auth/signin" className="font-medium text-blue-600 hover:text-blue-500">
+            Sign in
+          </Link>
+        </p>
       </div>
     </div>
   );
