@@ -41,6 +41,8 @@ type BookingWithDetails = {
   // Other display fields
   service_name?: string;
   provider_name?: string;
+  slot_date?: string;
+  slot_time?: string;
 };
 
 // Updated type definition for business bids view
@@ -68,17 +70,43 @@ type BidWithDetails = {
   // Service and provider info
   service_name?: string;
   provider_name?: string;
+  slot_date?: string;
+  slot_time?: string;
 };
 
-// Simple DataTable component
+// Type for customer data fetched from the database
+type Customer = {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_number?: string;
+};
+
+// Type for service data fetched from the database
+type Service = {
+  id: string;
+  name: string;
+};
+
+// Type for provider data fetched from the database
+type Profile = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  user_id: string;
+  phone_number?: string;
+};
+
+// Simple DataTable component - Updated with specific types
 const DataTable = ({ columns, data }: { 
   columns: Array<{
     name: string;
-    selector?: (row: any) => string | JSX.Element;
+    selector?: (row: BookingWithDetails | BidWithDetails) => string | JSX.Element;
     sortable?: boolean;
-    cell?: (row: any) => JSX.Element;
+    cell?: (row: BookingWithDetails | BidWithDetails) => JSX.Element;
   }>, 
-  data: any[] 
+  data: Array<BookingWithDetails | BidWithDetails> 
 }) => {
   return (
     <div className="overflow-x-auto">
@@ -228,8 +256,8 @@ export default function Dashboard() {
           
           console.log('All customers raw data:', JSON.stringify(allCustomers));
           
-          // Make a direct map of customers by ID
-          const customerMap: Record<string, any> = {};
+          // Make a direct map of customers by ID - Updated type
+          const customerMap: Record<string, Customer> = {};
           if (allCustomers && allCustomers.length > 0) {
             allCustomers.forEach(c => {
               customerMap[c.id] = c;
@@ -264,8 +292,8 @@ export default function Dashboard() {
             console.error('Error fetching providers:', providersError);
           }
           
-          // Create maps
-          const serviceMap: Record<string, any> = {};
+          // Create maps - Updated types
+          const serviceMap: Record<string, Service> = {};
           if (servicesData) {
             servicesData.forEach(service => {
               if (service.id) {
@@ -274,7 +302,7 @@ export default function Dashboard() {
             });
           }
           
-          const providerMap: Record<string, any> = {};
+          const providerMap: Record<string, Profile> = {};
           if (providersData) {
             providersData.forEach(provider => {
               if (provider.id) {
@@ -287,20 +315,15 @@ export default function Dashboard() {
           const processedBookings = bookingsData.map(booking => {
             const slot = booking.slots || {};
             
-            // Debug if customer ID exists in our map
-            console.log(`Booking ${booking.id} has customer_id ${booking.customer_id}, exists in map: ${Boolean(customerMap[booking.customer_id])}`);
-            if (booking.customer_id) {
-              console.log('Customer data for this ID:', customerMap[booking.customer_id]);
-            }
+            // Get customer data - Use Customer type
+            const customer: Customer | null = booking.customer_id ? customerMap[booking.customer_id] : null;
+            console.log(`For booking ${booking.id}, customer_id=${booking.customer_id}, found customer:`, customer);
             
-            // Get customer from the map
-            const customer = booking.customer_id ? customerMap[booking.customer_id] : null;
+            // Get service data - Use Service type
+            const service: Service | null = booking.service_id ? serviceMap[booking.service_id] : null;
             
-            // Get service data  
-            const service = booking.service_id ? serviceMap[booking.service_id] : null;
-            
-            // Get provider data
-            const provider = booking.provider_profile_id ? providerMap[booking.provider_profile_id] : null;
+            // Get provider data - Use Profile type
+            const provider: Profile | null = booking.provider_profile_id ? providerMap[booking.provider_profile_id] : null;
             
             // Format customer name from actual customer data
             const customerName = customer
@@ -368,31 +391,33 @@ export default function Dashboard() {
               
             if (slotsError) {
               console.error('Error fetching slots for bids:', slotsError);
-              setBids(allBids);
+              // We might still be able to display basic bid info
+              const basicBids = allBids.map(bid => ({ ...bid })); // Cast or map to BidWithDetails if needed
+              setBids(basicBids as BidWithDetails[]); 
               return;
             }
             
             // Get customer information for better display
-            const customerIds = allBids
+            const customerUserIds = allBids
               .map(bid => bid.user_id)
               .filter(id => id); // Remove null/undefined
               
-            const { data: customersData, error: customersError } = await supabase
+            const { data: bidCustomersData, error: bidCustomersError } = await supabase
               .from('profiles')
               .select('id, user_id, first_name, last_name, phone_number')
-              .in('user_id', customerIds);
+              .in('user_id', customerUserIds);
               
-            if (customersError) {
-              console.error('Error fetching customer profiles for bids:', customersError);
+            if (bidCustomersError) {
+              console.error('Error fetching customer profiles for bids:', bidCustomersError);
             }
             
             // Get service information
             const bidServiceIds = Array.from(new Set([
               ...(slotsData?.map(slot => slot.service_id).filter(Boolean as any) || []),
-              ...allBids.map(bid => bid.service_id).filter(Boolean as any)
+              // ...allBids.map(bid => bid.service_id).filter(Boolean as any) // bids table doesn't have service_id
             ]));
             
-            let bidServicesData: any[] = [];
+            let bidServicesData: Service[] = []; // Use Service type
             if (bidServiceIds.length > 0) {
               console.log('Fetching bid services with IDs:', bidServiceIds);
               const { data: fetchedServicesData, error: servicesError } = await supabase
@@ -404,17 +429,17 @@ export default function Dashboard() {
                 console.error('Error fetching services:', servicesError);
               } else {
                 console.log('Retrieved bid services:', fetchedServicesData?.length || 0);
-                bidServicesData = fetchedServicesData || [];
+                bidServicesData = (fetchedServicesData || []) as Service[];
               }
             }
             
             // Get provider information
             const bidProviderIds = Array.from(new Set([
               ...(slotsData?.map(slot => slot.provider_id).filter(Boolean as any) || []),
-              ...allBids.map(bid => bid.provider_id).filter(Boolean as any)
+              // ...allBids.map(bid => bid.provider_id).filter(Boolean as any) // bids table doesn't have provider_id
             ]));
             
-            let bidProvidersData: any[] = [];
+            let bidProvidersData: Profile[] = []; // Use Profile type
             if (bidProviderIds.length > 0) {
               console.log('Fetching bid providers with IDs:', bidProviderIds);
               const { data: fetchedProvidersData, error: providersError } = await supabase
@@ -426,7 +451,7 @@ export default function Dashboard() {
                 console.error('Error fetching provider profiles:', providersError);
               } else {
                 console.log('Retrieved bid providers:', fetchedProvidersData?.length || 0);
-                bidProvidersData = fetchedProvidersData || [];
+                bidProvidersData = (fetchedProvidersData || []) as Profile[];
               }
             }
             
@@ -441,12 +466,15 @@ export default function Dashboard() {
             // Combine all the data
             const combinedBids = allBids.map(bid => {
               const slot = slotsData?.find(slot => slot.id === bid.slot_id);
-              const customer = customersData?.find(c => c.user_id === bid.user_id);
+              const customerProfile = bidCustomersData?.find(c => c.user_id === bid.user_id);
               const service = bidServicesData.find(s => s.id === slot?.service_id);
               const provider = bidProvidersData.find(p => p.id === slot?.provider_id);
               
               const highestBid = highestBidsBySlot[bid.slot_id];
               const isWinning = highestBid && bid.bid_amount >= highestBid;
+              
+              // Use Profile type for customer info
+              const customer: Profile | null = customerProfile || null;
               
               return {
                 ...bid,
@@ -458,11 +486,11 @@ export default function Dashboard() {
                 end_time: slot?.end_time,
                 current_price: highestBid,
                 is_winning: isWinning,
-                service_name: service?.name || `Service #${slot?.service_id || bid.service_id}`,
+                service_name: service?.name || `Service #${slot?.service_id}`,
                 provider_name: provider ? 
                   `${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 
-                  `Provider #${slot?.provider_id || bid.provider_id}` : 
-                  `Provider #${slot?.provider_id || bid.provider_id}`,
+                  `Provider #${slot?.provider_id}` : 
+                  `Provider #${slot?.provider_id}`,
                 customer_name: customer ? 
                   `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 
                   'Unknown' : 
@@ -471,18 +499,16 @@ export default function Dashboard() {
                 slot_time: slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
                 slot_date: slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date',
                 status: bid.bid_amount === highestBid ? 'winning' : 'losing'
-              };
+              } as BidWithDetails; // Ensure the final object matches the type
             });
             
-            console.log("Final prepared bids:", combinedBids.length);
             setBids(combinedBids);
           } else {
-            console.log("No bids found in direct query");
-            setBids([]);
+            setBids([]); // Set to empty array if no bids found
           }
         } catch (error) {
           console.error('Error in fetchBids:', error);
-          setBids([]); 
+          setBids([]); // Set to empty on error
         }
       };
 
@@ -629,12 +655,12 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <DataTable columns={[
-                  { name: 'Date', selector: row => row.slot_date, sortable: true },
-                  { name: 'Time', selector: row => row.slot_time },
-                  { name: 'Service', selector: row => row.service_name },
-                  { name: 'Provider', selector: row => row.provider_name },
-                  { name: 'Customer', selector: row => row.customer_name },
-                  { name: 'Status', selector: row => row.status, sortable: true },
+                  { name: 'Date', selector: row => row.slot_date ?? 'N/A', sortable: true },
+                  { name: 'Time', selector: row => row.slot_time ?? 'N/A' },
+                  { name: 'Service', selector: row => row.service_name ?? 'N/A' },
+                  { name: 'Provider', selector: row => row.provider_name ?? 'N/A' },
+                  { name: 'Customer', selector: row => row.customer_name ?? 'N/A' },
+                  { name: 'Status', selector: row => row.status ?? 'N/A', sortable: true },
                   {
                     name: 'Actions',
                     cell: row => (
@@ -696,12 +722,22 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <DataTable columns={[
-                  { name: 'Date', selector: row => row.slot_date, sortable: true },
-                  { name: 'Time', selector: row => row.slot_time },
-                  { name: 'Service', selector: row => row.service_name },
-                  { name: 'Provider', selector: row => row.provider_name },
-                  { name: 'Your Bid', selector: row => `$${row.current_price ? (row.current_price / 100).toFixed(2) : 'N/A'}`, sortable: true },
-                  { name: 'Status', selector: row => row.status, sortable: true },
+                  { name: 'Date', selector: row => row.slot_date ?? 'N/A', sortable: true },
+                  { name: 'Time', selector: row => row.slot_time ?? 'N/A' },
+                  { name: 'Service', selector: row => row.service_name ?? 'N/A' },
+                  { name: 'Provider', selector: row => row.provider_name ?? 'N/A' },
+                  { 
+                    name: 'Your Bid', 
+                    selector: row => {
+                      // Type guard to check if current_price exists
+                      if ('current_price' in row && row.current_price !== undefined && row.current_price !== null) {
+                        return `$${(row.current_price / 100).toFixed(2)}`;
+                      }
+                      return 'N/A';
+                    },
+                    sortable: true 
+                  },
+                  { name: 'Status', selector: row => row.status ?? 'N/A', sortable: true },
                   {
                     name: 'Actions',
                     cell: row => (
