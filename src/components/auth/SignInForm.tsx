@@ -314,15 +314,6 @@ export default function SignInForm() {
           }
         </button>
       </form>
-      
-      <div className="mt-8 text-center">
-        <p className={`${roboto.className} text-[#64748B] text-[15px]`}>
-          Don&apos;t have an account?{' '}
-          <Link href={signUpHref} className="text-black hover:text-[#4F46E5] font-medium">
-            Sign Up
-          </Link>
-        </p>
-      </div>
     </div>
   );
 }
