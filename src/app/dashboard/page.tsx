@@ -8,6 +8,7 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Button } from '@/components/ui/Button';
 
 type ProfileData = {
   id: string;
@@ -131,64 +132,6 @@ const DataTable = ({ columns, data }: {
     </div>
   );
 };
-
-// Define simple UI components since the imported ones aren't available
-const Button = ({ 
-  children, 
-  variant, 
-  size, 
-  asChild, 
-  onClick 
-}: { 
-  children: React.ReactNode; 
-  variant?: string; 
-  size?: string; 
-  asChild?: boolean; 
-  onClick?: () => void; 
-}) => {
-  const className = `
-    ${variant === 'destructive' ? 'bg-red-500 hover:bg-red-600 text-white' : 
-      variant === 'outline' ? 'border border-gray-300 hover:bg-gray-100' : 
-      'bg-blue-500 hover:bg-blue-600 text-white'}
-    ${size === 'sm' ? 'px-2 py-1 text-xs' : 'px-4 py-2 text-sm'}
-    rounded-md font-medium transition-colors
-  `;
-
-  if (asChild) {
-    return <div className={className}>{children}</div>;
-  }
-
-  return (
-    <button className={className} onClick={onClick}>
-      {children}
-    </button>
-  );
-};
-
-// Simple table components
-const Table = ({ children }: { children: React.ReactNode }) => (
-  <table className="min-w-full divide-y divide-gray-200">{children}</table>
-);
-
-const TableHeader = ({ children }: { children: React.ReactNode }) => (
-  <thead className="bg-gray-50">{children}</thead>
-);
-
-const TableBody = ({ children }: { children: React.ReactNode }) => (
-  <tbody className="divide-y divide-gray-200">{children}</tbody>
-);
-
-const TableRow = ({ children }: { children: React.ReactNode }) => (
-  <tr>{children}</tr>
-);
-
-const TableHead = ({ children }: { children: React.ReactNode }) => (
-  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{children}</th>
-);
-
-const TableCell = ({ children }: { children: React.ReactNode }) => (
-  <td className="px-6 py-4 whitespace-nowrap">{children}</td>
-);
 
 export default function Dashboard() {
   const { user, isLoading } = useAuth();
