@@ -449,11 +449,13 @@ export default function Dashboard() {
           const supabase = getSupabaseClient();
           if (!supabase) return;
 
-          const { data: _, error: cancelError } = await supabase
+          // Corrected: Only destructure the error if data is not needed
+          const { error: cancelError } = await supabase
             .from('bookings')
             .update({ status: 'cancelled' })
             .eq('id', bookingId);
 
+          // Use the specific error variable from this operation
           if (cancelError) { 
             console.error('Error cancelling booking:', cancelError);
             return;
