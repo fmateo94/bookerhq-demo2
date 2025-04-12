@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
@@ -605,8 +605,8 @@ export default function Dashboard() {
   // Use a ref to store the cancelBooking function that needs access to fetchBookings
   const cancelBookingRef = useRef<(bookingId: string) => Promise<void>>();
 
-  // Move fetchBids to component level
-  const fetchBids = async () => {
+  // Memoize fetchBids
+  const fetchBids = useCallback(async () => {
     if (!user) {
       console.log('No user found, skipping bid fetch');
       return;
@@ -718,7 +718,7 @@ export default function Dashboard() {
       console.error('Error in fetchBids:', error);
       setBids([]);
     }
-  };
+  }, [user]); // Only recreate if user changes
 
   useEffect(() => {
     // Redirect if not logged in
@@ -899,8 +899,18 @@ export default function Dashboard() {
       fetchProfile();
       fetchBookings();
       fetchBids();
+
+      // Set up interval to refresh data
+      const interval = setInterval(() => {
+        fetchProfile();
+        fetchBookings();
+        fetchBids();
+      }, 30000); // Refresh every 30 seconds
+
+      // Cleanup interval on unmount
+      return () => clearInterval(interval);
     }
-  }, [user]);
+  }, [user, fetchBids]); // Add fetchBids to dependencies
   
   // Public handler that uses the ref function
   const handleCancelBooking = (bookingId: string) => {
@@ -1332,12 +1342,6 @@ export default function Dashboard() {
                       : 'Your Appointments'
                   }
                 </h2>
-                <Link 
-                  href="/services" 
-                  className="bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
-                >
-                  Book New Appointment
-                </Link>
               </div>
               
               {bookings.length === 0 ? (
