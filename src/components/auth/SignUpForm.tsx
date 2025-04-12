@@ -383,13 +383,6 @@ export default function SignUpForm() {
           >
             {loading ? 'Please wait...' : step === 1 ? 'next' : 'Create Account'}
           </button>
-
-          <p className={`${roboto.className} text-center text-sm text-black`}>
-            Already have an account?{' '}
-            <Link href="/auth/signin" className="underline">
-              Sign in
-            </Link>
-          </p>
         </motion.div>
       </form>
     </div>

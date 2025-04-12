@@ -17,12 +17,6 @@ export default function SignUpPage() {
         <Suspense fallback={<div className="text-center py-4">Loading form...</div>}>
           <SignUpForm />
         </Suspense>
-        <p className="mt-6 text-center text-sm text-gray-600">
-          Already have an account?{' '}
-          <Link href="/auth/signin" className="font-medium text-blue-600 hover:text-blue-500">
-            Sign in
-          </Link>
-        </p>
       </div>
     </div>
   );
