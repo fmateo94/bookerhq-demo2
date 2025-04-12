@@ -8,6 +8,9 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import React, { Fragment } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs/tabs';
+import { Table, TableHeader, TableBody, TableHead, TableCell, TableRow } from '@/components/ui/table/table';
 
 type ProfileData = {
   id: string;
@@ -48,30 +51,24 @@ type BookingWithDetails = {
 // Updated type definition for business bids view
 type BidWithDetails = {
   id: string;
-  user_id: string;
   slot_id: string;
   bid_amount: number;
   created_at: string;
   status?: string;
   tenant_id?: string;
-  // Joined data from slots
   service_id?: string;
   provider_id?: string;
+  customer_id?: string;
   start_time?: string;
   end_time?: string;
   is_auction?: boolean;
   min_price?: number;
-  // Bid competition info
-  current_price?: number;
-  is_winning?: boolean;
-  // Customer info
-  customer_name?: string;
-  customer_phone?: string;
-  // Service and provider info
   service_name?: string;
   provider_name?: string;
-  slot_date?: string;
   slot_time?: string;
+  slot_date?: string;
+  owner_type: string;
+  parent_bid_id?: string;
 };
 
 // Type for customer data fetched from the database
@@ -98,16 +95,159 @@ type Profile = {
   phone_number?: string;
 };
 
-// Simple DataTable component - Updated with specific types
+// Add type definitions for the database responses
+type SlotWithRelations = {
+  id: string;
+  service_id: string;
+  provider_id: string;
+  start_time: string;
+  end_time: string;
+  is_auction: boolean;
+  min_price: number;
+  services: {
+    id: string;
+    name: string;
+  };
+  profiles: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+};
+
+// Add this type before the DataTable component
+type GroupedBids = {
+  [key: string]: {
+    originalBid: BidWithDetails;
+    relatedBids: BidWithDetails[];
+  };
+};
+
+// Update the DataTable component
 const DataTable = ({ columns, data }: { 
   columns: Array<{
     name: string;
-    selector?: (row: BookingWithDetails | BidWithDetails) => string | JSX.Element;
+    selector?: (row: BidWithDetails) => string | JSX.Element;
     sortable?: boolean;
-    cell?: (row: BookingWithDetails | BidWithDetails) => JSX.Element;
+    cell?: (row: BidWithDetails) => JSX.Element;
   }>, 
-  data: Array<BookingWithDetails | BidWithDetails> 
+  data: Array<BidWithDetails> 
 }) => {
+  // Type guard to check if array contains BidWithDetails
+  const isBidArray = (items: Array<BidWithDetails>): items is BidWithDetails[] => {
+    return items.length === 0 || 'bid_amount' in items[0];
+  };
+
+  // Group bids by slot_id - only for BidWithDetails arrays
+  const groupBidsBySlot = (items: Array<BidWithDetails>): GroupedBids => {
+    if (!isBidArray(items)) return {};
+    
+    const grouped: GroupedBids = {};
+    
+    // First pass: collect all customer bids
+    items.forEach(bid => {
+      if (!bid.slot_id) return;
+      
+      // If this is a customer bid, add it as an original bid
+      if (bid.owner_type === 'customer') {
+        if (!grouped[bid.slot_id]) {
+          grouped[bid.slot_id] = {
+            originalBid: bid,
+            relatedBids: []
+          };
+        }
+      }
+    });
+
+    // Second pass: add provider counter bids to their respective groups
+    items.forEach(bid => {
+      if (!bid.slot_id || !bid.parent_bid_id) return;
+
+      // If this is a provider bid, find its parent bid and add it to related bids
+      if (bid.owner_type === 'provider') {
+        // Find the parent bid's slot_id
+        const parentBid = items.find(b => b.id === bid.parent_bid_id);
+        if (parentBid && parentBid.slot_id && grouped[parentBid.slot_id]) {
+          grouped[parentBid.slot_id].relatedBids.push(bid);
+          // Sort related bids by creation date in descending order (newest first)
+          grouped[parentBid.slot_id].relatedBids.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+        }
+      }
+    });
+    
+    return grouped;
+  };
+
+  // If the data contains bid_amount, it's a bid
+  const isBidsTable = data.length > 0 && 'bid_amount' in data[0];
+  
+  if (isBidsTable) {
+    const groupedBids = groupBidsBySlot(data as BidWithDetails[]);
+    
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead>
+            <tr>
+              {columns.map((column, i) => (
+                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{column.name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {Object.entries(groupedBids).map(([slotId, group], groupIndex) => {
+              // Combine all bids for this slot in chronological order (newest first)
+              const allBidsForSlot = [...group.relatedBids, group.originalBid]
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+              return (
+                <React.Fragment key={slotId}>
+                  {allBidsForSlot.map((bid, bidIndex) => {
+                    const isNewestBid = bidIndex === 0;
+                    const hasMultipleBids = allBidsForSlot.length > 1;
+
+                    return (
+                      <tr 
+                        key={`${slotId}-bid-${bidIndex}`} 
+                        className={`${
+                          isNewestBid || !hasMultipleBids
+                            ? "bg-white hover:bg-gray-50"
+                            : "bg-gray-50 border-l-4 border-gray-200 text-gray-500"
+                        }`}
+                      >
+                        {columns.map((column, j) => (
+                          <td 
+                            key={j} 
+                            className={`whitespace-nowrap ${
+                              isNewestBid || !hasMultipleBids
+                                ? "px-6 py-4 text-base font-medium"
+                                : "px-6 py-3 text-sm"
+                            }`}
+                          >
+                            {column.cell ? column.cell(bid) : column.selector ? column.selector(bid) : ''}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                  {/* Add a subtle spacing row between groups */}
+                  {groupIndex < Object.keys(groupedBids).length - 1 && (
+                    <tr className="h-2 bg-gray-50">
+                      <td colSpan={columns.length} className="border-b border-gray-200"></td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // Regular table for non-bid data
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
@@ -132,16 +272,453 @@ const DataTable = ({ columns, data }: {
   );
 };
 
+// Add BidActionModal component
+const BidActionModal = ({ 
+  bid, 
+  isOpen, 
+  onClose,
+  onAccept,
+  onDecline,
+  onCounterbid,
+}: { 
+  bid: BidWithDetails;
+  isOpen: boolean;
+  onClose: () => void;
+  onAccept: () => void;
+  onDecline: () => void;
+  onCounterbid: () => void;
+}) => {
+  if (!isOpen) return null;
+
+  const handleDeclineClick = () => {
+    console.log('Decline button clicked');
+    onDecline();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+        <h3 className="text-lg font-semibold mb-4">Bid Actions</h3>
+        
+        <div className="mb-4">
+          <p className="text-sm text-gray-600 mb-2">Service: {bid.service_name}</p>
+          <p className="text-sm text-gray-600 mb-2">Date: {bid.slot_date}</p>
+          <p className="text-sm text-gray-600 mb-2">Time: {bid.slot_time}</p>
+          <p className="text-sm text-gray-600">Bid Amount: ${(bid.bid_amount / 100).toFixed(2)}</p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onAccept}
+            className="w-full bg-green-600 text-white py-2 px-4 rounded-md text-sm hover:bg-green-700 transition-colors"
+          >
+            Accept Bid
+          </button>
+          <button
+            onClick={onCounterbid}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700 transition-colors"
+          >
+            Make Counterbid
+          </button>
+          <button
+            onClick={handleDeclineClick}
+            className="w-full bg-red-600 text-white py-2 px-4 rounded-md text-sm hover:bg-red-700 transition-colors"
+          >
+            Decline Bid
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-md text-sm hover:bg-gray-50 transition-colors mt-2"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Add CounterBidModal component after BidActionModal
+const CounterBidModal = ({ 
+  bid, 
+  isOpen, 
+  onClose,
+  onSubmit,
+}: { 
+  bid: BidWithDetails | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (amount: number) => void;
+}) => {
+  const [amount, setAmount] = useState(bid ? Math.ceil(bid.bid_amount * 1.1) : 0);
+  const [error, setError] = useState<string>('');
+
+  useEffect(() => {
+    if (bid) {
+      setAmount(Math.ceil(bid.bid_amount * 1.1));
+    }
+  }, [bid]);
+
+  const handleSubmit = () => {
+    if (!bid) return;
+    if (amount <= bid.bid_amount) {
+      setError('Counter bid must be higher than the original bid amount');
+      return;
+    }
+    onSubmit(amount);
+  };
+
+  if (!isOpen || !bid) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+        <h3 className="text-lg font-semibold mb-4">Make Counter Bid</h3>
+        
+        <div className="mb-4">
+          <p className="text-sm text-gray-600 mb-2">Original Bid: ${(bid.bid_amount / 100).toFixed(2)}</p>
+          <p className="text-sm text-gray-600 mb-2">Service: {bid.service_name}</p>
+          <p className="text-sm text-gray-600 mb-2">Date: {bid.slot_date}</p>
+          <p className="text-sm text-gray-600">Time: {bid.slot_time}</p>
+        </div>
+
+        <div className="mb-4">
+          <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
+            Your Counter Bid Amount ($)
+          </label>
+          <input
+            type="number"
+            id="amount"
+            value={(amount / 100).toFixed(2)}
+            onChange={(e) => {
+              setAmount(Math.round(parseFloat(e.target.value) * 100));
+              setError('');
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            min={(bid.bid_amount / 100 + 0.01).toFixed(2)}
+            step="0.01"
+          />
+          {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={handleSubmit}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700 transition-colors"
+          >
+            Submit Counter Bid
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-md text-sm hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const BidsDataTable = ({ columns, data }: { 
+  columns: Array<{
+    name: string;
+    selector?: (row: BidWithDetails) => string | JSX.Element;
+    sortable?: boolean;
+    cell?: (row: BidWithDetails) => JSX.Element;
+  }>, 
+  data: Array<BidWithDetails> 
+}) => {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // Group bids by slot_id and customer_id
+  const groupBidsBySlotAndCustomer = (items: Array<BidWithDetails>) => {
+    const grouped: { [key: string]: BidWithDetails[] } = {};
+    
+    items.forEach(bid => {
+      if (!bid.slot_id || !bid.customer_id) return;
+      
+      const groupKey = `${bid.slot_id}-${bid.customer_id}`;
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = [];
+      }
+      grouped[groupKey].push(bid);
+    });
+
+    // Sort bids within each group by created_at in descending order
+    Object.values(grouped).forEach(group => {
+      group.sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    });
+    
+    return grouped;
+  };
+
+  const toggleGroup = (groupKey: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupKey)) {
+        newSet.delete(groupKey);
+      } else {
+        newSet.add(groupKey);
+      }
+      return newSet;
+    });
+  };
+
+  const groupedBids = groupBidsBySlotAndCustomer(data);
+
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[30px]"></TableHead>
+            {columns.map((column) => (
+              <TableHead key={column.name}>{column.name}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Object.entries(groupedBids).map(([groupKey, bids]) => {
+            const isExpanded = expandedGroups.has(groupKey);
+            const latestBid = bids[0]; // First bid is the most recent due to sorting
+
+            return (
+              <Fragment key={groupKey}>
+                {/* Latest bid row */}
+                <TableRow className="hover:bg-muted/50 cursor-pointer">
+                  <TableCell>
+                    <button 
+                      onClick={() => toggleGroup(groupKey)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <svg 
+                        className={`h-4 w-4 transition-transform ${isExpanded ? 'transform rotate-90' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2} 
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </button>
+                  </TableCell>
+                  {columns.map((column) => (
+                    <TableCell 
+                      key={column.name}
+                      onClick={() => toggleGroup(groupKey)}
+                    >
+                      {column.cell 
+                        ? column.cell(latestBid)
+                        : column.selector 
+                          ? column.selector(latestBid)
+                          : ''}
+                    </TableCell>
+                  ))}
+                </TableRow>
+
+                {/* History rows */}
+                {isExpanded && bids.slice(1).map((bid) => (
+                  <TableRow 
+                    key={bid.id} 
+                    className="bg-muted/50 border-l-4 border-gray-200"
+                  >
+                    <TableCell></TableCell>
+                    {columns.map((column) => (
+                      <TableCell 
+                        key={column.name}
+                        className="text-sm text-gray-500"
+                      >
+                        {column.cell 
+                          ? column.cell(bid)
+                          : column.selector 
+                            ? column.selector(bid)
+                            : ''}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </Fragment>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+};
+
+const BookingsDataTable = ({ columns, data }: { 
+  columns: Array<{
+    name: string;
+    selector?: (row: BookingWithDetails) => string | JSX.Element;
+    sortable?: boolean;
+    cell?: (row: BookingWithDetails) => JSX.Element;
+  }>, 
+  data: Array<BookingWithDetails> 
+}) => {
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((column) => (
+              <TableHead key={column.name}>{column.name}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.map((row) => (
+            <TableRow key={row.id}>
+              {columns.map((column) => (
+                <TableCell key={column.name}>
+                  {column.cell 
+                    ? column.cell(row)
+                    : column.selector 
+                      ? column.selector(row)
+                      : ''}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const { user, isLoading } = useAuth();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [bids, setBids] = useState<BidWithDetails[]>([]);
   const [activeTab, setActiveTab] = useState('appointments');
+  const [selectedBid, setSelectedBid] = useState<BidWithDetails | null>(null);
+  const [counterBidModalBid, setCounterBidModalBid] = useState<BidWithDetails | null>(null);
   const router = useRouter();
   
   // Use a ref to store the cancelBooking function that needs access to fetchBookings
   const cancelBookingRef = useRef<(bookingId: string) => Promise<void>>();
+
+  // Move fetchBids to component level
+  const fetchBids = async () => {
+    if (!user) {
+      console.log('No user found, skipping bid fetch');
+      return;
+    }
+    
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not initialized');
+
+      console.log('Fetching bids for user:', user.id);
+
+      // First get the user's profile to get their provider ID
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')  // This is their provider_id
+        .eq('user_id', user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        return;
+      }
+
+      if (!profileData) {
+        console.error('No profile found for user');
+        return;
+      }
+
+      console.log('Found profile:', profileData);
+
+      // Then fetch the bids where either:
+      // 1. The user is the provider (profile_provider_id matches their profile id)
+      // 2. The user is the customer (customer_id matches their user id)
+      const { data: bidsData, error: bidsError } = await supabase
+        .from('bids')
+        .select(`
+          *,
+          slots (
+            id,
+            service_id,
+            provider_id,
+            start_time,
+            end_time,
+            is_auction,
+            min_price,
+            services (
+              id,
+              name
+            ),
+            profiles (
+              id,
+              first_name,
+              last_name
+            )
+          )
+        `)
+        .or(`profile_provider_id.eq.${profileData.id},customer_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
+
+      if (bidsError) {
+        console.error('Error fetching bids:', bidsError);
+        return;
+      }
+
+      console.log('Raw bids data:', bidsData);
+
+      if (bidsData) {
+        const combinedBids = bidsData.map(bid => {
+          const slot = bid.slots;
+          const service = slot?.services;
+          const provider = slot?.profiles;
+
+          const processedBid = {
+            id: bid.id,
+            slot_id: bid.slot_id,
+            bid_amount: bid.bid_amount,
+            created_at: bid.created_at,
+            status: bid.status,
+            tenant_id: bid.tenant_id,
+            service_id: slot?.service_id,
+            provider_id: bid.profile_provider_id,
+            customer_id: bid.customer_id,
+            start_time: slot?.start_time,
+            end_time: slot?.end_time,
+            is_auction: slot?.is_auction,
+            min_price: slot?.min_price,
+            service_name: service?.name || `Service #${slot?.service_id}`,
+            provider_name: provider ? 
+              `${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 
+              `Provider #${bid.profile_provider_id}` : 
+              `Provider #${bid.profile_provider_id}`,
+            slot_time: slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
+            slot_date: slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date',
+            owner_type: bid.owner_type,
+            parent_bid_id: bid.parent_bid_id
+          } as BidWithDetails;
+
+          console.log('Processed bid:', processedBid);
+          return processedBid;
+        });
+
+        console.log('Final processed bids:', combinedBids);
+        setBids(combinedBids);
+      } else {
+        console.log('No bids data found');
+        setBids([]);
+      }
+    } catch (error) {
+      console.error('Error in fetchBids:', error);
+      setBids([]);
+    }
+  };
 
   useEffect(() => {
     // Redirect if not logged in
@@ -293,156 +870,6 @@ export default function Dashboard() {
         }
       };
 
-      // Fetch bids based on user role
-      const fetchBids = async () => {
-        try {
-          console.log("Attempting direct bids query");
-          
-          // Simple direct query with no filters to check if we can access any bids
-          const { data: allBids, error: allBidsError } = await supabase
-            .from('bids')
-            .select('*');
-            
-          console.log("Direct query of all bids (no filters):", allBids?.length || 0, allBids);
-          
-          if (allBidsError) {
-            console.error("Error with unfiltered bids query:", allBidsError);
-            return;
-          }
-          
-          // If we can access bids, use them directly
-          if (allBids && allBids.length > 0) {
-            console.log("Found bids in the database, processing them");
-            
-            // Get the slot information for these bids
-            const slotIds = allBids.map(bid => bid.slot_id);
-            
-            const { data: slotsData, error: slotsError } = await supabase
-              .from('slots')
-              .select('id, start_time, end_time, service_id, provider_id, is_auction, min_price')
-              .in('id', slotIds);
-              
-            if (slotsError) {
-              console.error('Error fetching slots for bids:', slotsError);
-              // We might still be able to display basic bid info
-              const basicBids = allBids.map(bid => ({ ...bid })); // Cast or map to BidWithDetails if needed
-              setBids(basicBids as BidWithDetails[]); 
-              return;
-            }
-            
-            // Get customer information for better display
-            const customerUserIds = allBids
-              .map(bid => bid.user_id)
-              .filter(id => id); // Remove null/undefined
-              
-            const { data: bidCustomersData, error: bidCustomersError } = await supabase
-              .from('profiles')
-              .select('id, user_id, first_name, last_name, phone_number')
-              .in('user_id', customerUserIds);
-              
-            if (bidCustomersError) {
-              console.error('Error fetching customer profiles for bids:', bidCustomersError);
-            }
-            
-            // Get service information
-            const bidServiceIds = Array.from(new Set([
-              ...(slotsData?.map(slot => slot.service_id).filter(Boolean) || []),
-            ]));
-            
-            let bidServicesData: Service[] = []; // Use Service type
-            if (bidServiceIds.length > 0) {
-              console.log('Fetching bid services with IDs:', bidServiceIds);
-              const { data: fetchedServicesData, error: servicesError } = await supabase
-                .from('services')
-                .select('id, name')
-                .in('id', bidServiceIds);
-                
-              if (servicesError) {
-                console.error('Error fetching services:', servicesError);
-              } else {
-                console.log('Retrieved bid services:', fetchedServicesData?.length || 0);
-                bidServicesData = (fetchedServicesData || []) as Service[];
-              }
-            }
-            
-            // Get provider information
-            const bidProviderIds = Array.from(new Set([
-              ...(slotsData?.map(slot => slot.provider_id).filter(Boolean) || []),
-            ]));
-            
-            let bidProvidersData: Profile[] = []; // Use Profile type
-            if (bidProviderIds.length > 0) {
-              console.log('Fetching bid providers with IDs:', bidProviderIds);
-              const { data: fetchedProvidersData, error: providersError } = await supabase
-                .from('profiles')
-                .select('id, user_id, first_name, last_name')
-                .in('id', bidProviderIds);
-                
-              if (providersError) {
-                console.error('Error fetching provider profiles:', providersError);
-              } else {
-                console.log('Retrieved bid providers:', fetchedProvidersData?.length || 0);
-                bidProvidersData = (fetchedProvidersData || []) as Profile[];
-              }
-            }
-            
-            // Get highest bid for each slot
-            const highestBidsBySlot: Record<string, number> = {};
-            allBids.forEach(bid => {
-              if (!highestBidsBySlot[bid.slot_id] || bid.bid_amount > highestBidsBySlot[bid.slot_id]) {
-                highestBidsBySlot[bid.slot_id] = bid.bid_amount;
-              }
-            });
-            
-            // Combine all the data
-            const combinedBids = allBids.map(bid => {
-              const slot = slotsData?.find(slot => slot.id === bid.slot_id);
-              const customerProfile = bidCustomersData?.find(c => c.user_id === bid.user_id);
-              const service = bidServicesData.find(s => s.id === slot?.service_id);
-              const provider = bidProvidersData.find(p => p.id === slot?.provider_id);
-              
-              const highestBid = highestBidsBySlot[bid.slot_id];
-              const isWinning = highestBid && bid.bid_amount >= highestBid;
-              
-              // Use Profile type for customer info
-              const customer: Profile | null = customerProfile || null;
-              
-              return {
-                ...bid,
-                service_id: slot?.service_id,
-                provider_id: slot?.provider_id,
-                is_auction: slot?.is_auction,
-                min_price: slot?.min_price,
-                start_time: slot?.start_time,
-                end_time: slot?.end_time,
-                current_price: highestBid,
-                is_winning: isWinning,
-                service_name: service?.name || `Service #${slot?.service_id}`,
-                provider_name: provider ? 
-                  `${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 
-                  `Provider #${slot?.provider_id}` : 
-                  `Provider #${slot?.provider_id}`,
-                customer_name: customer ? 
-                  `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 
-                  'Unknown' : 
-                  'Unknown',
-                customer_phone: customer?.phone_number,
-                slot_time: slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
-                slot_date: slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date',
-                status: bid.bid_amount === highestBid ? 'winning' : 'losing'
-              } as BidWithDetails; // Ensure the final object matches the type
-            });
-            
-            setBids(combinedBids);
-          } else {
-            setBids([]); // Set to empty array if no bids found
-          }
-        } catch (error) {
-          console.error('Error in fetchBids:', error);
-          setBids([]); // Set to empty on error
-        }
-      };
-
       // Define the cancelBooking function with access to fetchBookings
       cancelBookingRef.current = async (bookingId: string) => {
         try {
@@ -484,6 +911,329 @@ export default function Dashboard() {
     }
   };
 
+  // Update the handleCounterbid function
+  const handleCounterbid = async (amount: number) => {
+    console.log('handleCounterbid called with amount:', amount);
+    if (!counterBidModalBid || !user) {
+      console.error('Missing required data:', { counterBidModalBid: !!counterBidModalBid, user: !!user });
+      return;
+    }
+    
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not initialized');
+
+      // Get the provider's profile ID
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      console.log('Profile data fetched:', profileData);
+      if (profileError) throw profileError;
+      if (!profileData) throw new Error('No profile found');
+
+      // Create the counterbid
+      const { data: newBid, error: bidError } = await supabase
+        .from('bids')
+        .insert([
+          {
+            slot_id: counterBidModalBid.slot_id,
+            profile_provider_id: profileData.id,
+            customer_id: counterBidModalBid.customer_id,
+            tenant_id: counterBidModalBid.tenant_id,
+            bid_amount: amount,
+            status: 'pending',
+            owner_type: 'provider',
+            parent_bid_id: counterBidModalBid.id
+          }
+        ])
+        .select()
+        .single();
+
+      console.log('New bid created:', newBid);
+      if (bidError) {
+        console.error('Error creating new bid:', bidError);
+        throw bidError;
+      }
+
+      // Update the original bid's status
+      const { error: updateError } = await supabase
+        .from('bids')
+        .update({ status: 'countered' })
+        .eq('id', counterBidModalBid.id);
+
+      console.log('Original bid updated');
+      if (updateError) {
+        console.error('Error updating original bid:', updateError);
+        throw updateError;
+      }
+
+      try {
+        // Try to create notification, but don't fail if it errors
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          .insert([
+            {
+              user_id: counterBidModalBid.customer_id,
+              title: 'Counterbid Received',
+              message: `The service provider has made a counterbid of $${(amount / 100).toFixed(2)} for your bid.`,
+              notification_type: 'counterbid',
+              related_id: newBid.id
+            }
+          ]);
+
+        if (notificationError) {
+          console.error('Error creating notification:', notificationError);
+          // Don't throw the error, just log it
+        } else {
+          console.log('Notification created successfully');
+        }
+      } catch (notificationError) {
+        console.error('Error in notification creation:', notificationError);
+        // Don't throw the error, continue with the flow
+      }
+
+      // Close modal and refresh bids
+      setCounterBidModalBid(null);
+      await fetchBids();
+      console.log('Bids refreshed');
+
+    } catch (error) {
+      console.error('Error placing counterbid:', error);
+      alert('Error placing counterbid. Please try again.');
+    }
+  };
+
+  const handleAcceptBid = async () => {
+    if (!selectedBid || !user) return;
+    
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not initialized');
+
+      // First get the bid details to ensure we have the latest data
+      const { data: bidData, error: bidFetchError } = await supabase
+        .from('bids')
+        .select('*')
+        .eq('id', selectedBid.id)
+        .single();
+
+      if (bidFetchError) throw bidFetchError;
+      if (!bidData) throw new Error('Bid not found');
+
+      // 1. Change the status of the bid to 'accepted'
+      const { error: bidUpdateError } = await supabase
+        .from('bids')
+        .update({ status: 'accepted' })
+        .eq('id', selectedBid.id);
+
+      if (bidUpdateError) throw bidUpdateError;
+
+      // 2. Create a new booking record for the winning customer
+      const { data: newBooking, error: bookingCreateError } = await supabase
+        .from('bookings')
+        .insert([
+          {
+            slot_id: bidData.slot_id,
+            customer_id: bidData.customer_id, // Use customer_id from the bid
+            provider_profile_id: bidData.profile_provider_id, // Use profile_provider_id from the bid
+            service_id: selectedBid.service_id,
+            price_paid: bidData.bid_amount,
+            status: 'confirmed',
+            tenant_id: bidData.tenant_id
+          }
+        ])
+        .select()
+        .single();
+
+      if (bookingCreateError) throw bookingCreateError;
+
+      // 3. Cancel any existing bookings for this slot
+      const { error: existingBookingUpdateError } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('slot_id', bidData.slot_id)
+        .neq('id', newBooking.id); // Don't cancel the booking we just created
+
+      if (existingBookingUpdateError) throw existingBookingUpdateError;
+
+      // 4. Create a notification for the customer
+      await supabase
+        .from('notifications')
+        .insert([
+          {
+            user_id: bidData.customer_id, // Use customer_id from the bid
+            title: 'Bid Accepted',
+            message: `Your bid of $${(bidData.bid_amount / 100).toFixed(2)} has been accepted! Your appointment is scheduled for ${selectedBid.slot_date} at ${selectedBid.slot_time}.`,
+            notification_type: 'bid_accepted',
+            related_id: selectedBid.id
+          }
+        ]);
+
+      // 5. Refresh the bids list
+      await fetchBids();
+      
+      // Close the modal
+      setSelectedBid(null);
+
+    } catch (error) {
+      console.error('Error accepting bid:', error);
+      // You might want to show an error message to the user here
+    }
+  };
+
+  const handleDeclineBid = async () => {
+    console.log('handleDeclineBid called with bid:', selectedBid);
+    if (!selectedBid || !user) {
+      console.log('Missing required data:', { selectedBid: !!selectedBid, user: !!user });
+      return;
+    }
+    
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not initialized');
+
+      // First get the bid details to ensure we have the latest data
+      const { data: bidData, error: bidFetchError } = await supabase
+        .from('bids')
+        .select('*')
+        .eq('id', selectedBid.id)
+        .single();
+
+      console.log('Fetched bid data:', bidData);
+      if (bidFetchError) throw bidFetchError;
+      if (!bidData) throw new Error('Bid not found');
+
+      // 1. Change the status of the bid to 'rejected'
+      const { error: bidUpdateError } = await supabase
+        .from('bids')
+        .update({ status: 'rejected' })
+        .eq('id', selectedBid.id);
+
+      console.log('Bid status update result:', { error: bidUpdateError });
+      if (bidUpdateError) throw bidUpdateError;
+
+      // 2. Create a notification for the customer
+      const notificationResult = await supabase
+        .from('notifications')
+        .insert([
+          {
+            user_id: bidData.customer_id,
+            title: 'Bid Rejected',
+            message: `Your bid of $${(bidData.bid_amount / 100).toFixed(2)} for the appointment on ${selectedBid.slot_date} at ${selectedBid.slot_time} has been rejected.`,
+            notification_type: 'bid_rejected',
+            related_id: selectedBid.id
+          }
+        ]);
+
+      console.log('Notification creation result:', notificationResult);
+
+      // 3. Refresh the bids list
+      await fetchBids();
+      console.log('Bids refreshed');
+      
+      // Close the modal
+      setSelectedBid(null);
+
+    } catch (error) {
+      console.error('Error declining bid:', error);
+      // You might want to show an error message to the user here
+    }
+  };
+
+  // Define columns inside the component to access user and handleCounterbid
+  const bidColumns = [
+    { 
+      name: 'Date', 
+      selector: (row: BidWithDetails) => row.slot_date || 'N/A', 
+      sortable: true 
+    },
+    { 
+      name: 'Time', 
+      selector: (row: BidWithDetails) => row.slot_time || 'N/A' 
+    },
+    { 
+      name: 'Service', 
+      selector: (row: BidWithDetails) => row.service_name || 'N/A' 
+    },
+    { 
+      name: 'Provider', 
+      selector: (row: BidWithDetails) => row.provider_name || 'N/A' 
+    },
+    { 
+      name: 'Amount', 
+      selector: (row: BidWithDetails) => `$${(row.bid_amount / 100).toFixed(2)}`,
+      sortable: true 
+    },
+    { 
+      name: 'Status', 
+      selector: (row: BidWithDetails) => row.status || 'N/A', 
+      sortable: true 
+    },
+    { 
+      name: 'Type', 
+      selector: (row: BidWithDetails) => row.owner_type === 'provider' ? 'Your Bid' : 'Customer Bid'
+    },
+    {
+      name: 'Actions',
+      cell: (row: BidWithDetails) => (
+        <button 
+          onClick={() => setSelectedBid(row)}
+          className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
+        >
+          View Details
+        </button>
+      ),
+    },
+  ];
+
+  const appointmentColumns = [
+    { 
+      name: 'Date', 
+      selector: (row: BookingWithDetails) => row.slot_date || 'N/A', 
+      sortable: true 
+    },
+    { 
+      name: 'Time', 
+      selector: (row: BookingWithDetails) => row.slot_time || 'N/A' 
+    },
+    { 
+      name: 'Service', 
+      selector: (row: BookingWithDetails) => row.service_name || 'N/A' 
+    },
+    { 
+      name: 'Provider', 
+      selector: (row: BookingWithDetails) => row.provider_name || 'N/A' 
+    },
+    { 
+      name: 'Customer', 
+      selector: (row: BookingWithDetails) => row.customer_name || 'N/A' 
+    },
+    { 
+      name: 'Amount', 
+      selector: (row: BookingWithDetails) => row.price_paid ? `$${(row.price_paid / 100).toFixed(2)}` : 'N/A',
+      sortable: true 
+    },
+    { 
+      name: 'Status', 
+      selector: (row: BookingWithDetails) => row.status || 'N/A', 
+      sortable: true 
+    },
+    {
+      name: 'Actions',
+      cell: (row: BookingWithDetails) => (
+        <Link 
+          href={`/booking/${row.id}`}
+          className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
+        >
+          View
+        </Link>
+      ),
+    },
+  ];
+
   if (isLoading || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -495,6 +1245,27 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      
+      {/* Update CounterBidModal usage */}
+      <CounterBidModal
+        bid={counterBidModalBid}
+        isOpen={counterBidModalBid !== null}
+        onClose={() => setCounterBidModalBid(null)}
+        onSubmit={handleCounterbid}
+      />
+      
+      {/* Existing BidActionModal */}
+      <BidActionModal
+        bid={selectedBid!}
+        isOpen={selectedBid !== null}
+        onClose={() => setSelectedBid(null)}
+        onAccept={handleAcceptBid}
+        onDecline={handleDeclineBid}
+        onCounterbid={() => {
+          setCounterBidModalBid(selectedBid);
+          setSelectedBid(null);
+        }}
+      />
       
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Profile header */}
@@ -587,32 +1358,7 @@ export default function Dashboard() {
                   </Link>
                 </div>
               ) : (
-                <DataTable columns={[
-                  { name: 'Date', selector: row => row.slot_date ?? 'N/A', sortable: true },
-                  { name: 'Time', selector: row => row.slot_time ?? 'N/A' },
-                  { name: 'Service', selector: row => row.service_name ?? 'N/A' },
-                  { name: 'Provider', selector: row => row.provider_name ?? 'N/A' },
-                  { name: 'Customer', selector: row => row.customer_name ?? 'N/A' },
-                  { name: 'Status', selector: row => row.status ?? 'N/A', sortable: true },
-                  {
-                    name: 'Actions',
-                    cell: row => (
-                      <div className="flex gap-2">
-                        <button className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors">
-                          <Link href={`/booking/${row.id}`}>View</Link>
-                        </button>
-                        {row.status === 'pending' && (
-                          <button
-                            className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 text-xs rounded-md font-medium transition-colors"
-                            onClick={() => handleCancelBooking(row.id)}
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-                    ),
-                  },
-                ]} data={bookings} />
+                <BookingsDataTable columns={appointmentColumns} data={bookings} />
               )}
             </div>
           )}
@@ -628,12 +1374,6 @@ export default function Dashboard() {
                       : 'Your Auction Bids'
                   }
                 </h2>
-                <Link 
-                  href="/auctions" 
-                  className="bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
-                >
-                  View Active Auctions
-                </Link>
               </div>
               
               {bids.length === 0 ? (
@@ -654,34 +1394,52 @@ export default function Dashboard() {
                   </Link>
                 </div>
               ) : (
-                <DataTable columns={[
-                  { name: 'Date', selector: row => row.slot_date ?? 'N/A', sortable: true },
-                  { name: 'Time', selector: row => row.slot_time ?? 'N/A' },
-                  { name: 'Service', selector: row => row.service_name ?? 'N/A' },
-                  { name: 'Provider', selector: row => row.provider_name ?? 'N/A' },
-                  { 
-                    name: 'Your Bid', 
-                    selector: row => {
-                      // Type guard to check if current_price exists
-                      if ('current_price' in row && row.current_price !== undefined && row.current_price !== null) {
-                        return `$${(row.current_price / 100).toFixed(2)}`;
+                <div>
+                  <BidsDataTable 
+                    columns={[
+                      { 
+                        name: 'Date', 
+                        selector: (row: BidWithDetails) => row.slot_date || 'N/A'
+                      },
+                      { 
+                        name: 'Time', 
+                        selector: (row: BidWithDetails) => row.slot_time || 'N/A' 
+                      },
+                      { 
+                        name: 'Service', 
+                        selector: (row: BidWithDetails) => row.service_name || 'N/A' 
+                      },
+                      { 
+                        name: 'Provider', 
+                        selector: (row: BidWithDetails) => row.provider_name || 'N/A' 
+                      },
+                      { 
+                        name: 'Amount', 
+                        selector: (row: BidWithDetails) => `$${(row.bid_amount / 100).toFixed(2)}`
+                      },
+                      { 
+                        name: 'Status', 
+                        selector: (row: BidWithDetails) => row.status || 'N/A'
+                      },
+                      { 
+                        name: 'Type', 
+                        selector: (row: BidWithDetails) => row.owner_type === 'provider' ? 'Your Bid' : 'Customer Bid'
+                      },
+                      {
+                        name: 'Actions',
+                        cell: (row: BidWithDetails) => (
+                          <button 
+                            onClick={() => setSelectedBid(row)}
+                            className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
+                          >
+                            View Details
+                          </button>
+                        ),
                       }
-                      return 'N/A';
-                    },
-                    sortable: true 
-                  },
-                  { name: 'Status', selector: row => row.status ?? 'N/A', sortable: true },
-                  {
-                    name: 'Actions',
-                    cell: row => (
-                      <div className="flex gap-2">
-                        <button className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors">
-                          <Link href={`/bid/${row.id}`}>View</Link>
-                        </button>
-                      </div>
-                    ),
-                  },
-                ]} data={bids} />
+                    ]} 
+                    data={bids} 
+                  />
+                </div>
               )}
             </div>
           )}

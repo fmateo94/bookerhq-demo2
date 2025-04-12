@@ -101,6 +101,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - Add debug information to stderr while keeping the main output clean in stdout for better pipeline integration
 - When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
 - Use 'gpt-4o' as the model name for OpenAI's GPT-4 with vision capabilities
+- The bids table has a status check constraint that only allows these values: 'pending', 'accepted', 'rejected', 'countered', 'withdrawn'
 
 # Scratchpad
 
@@ -121,3 +122,12 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 [ ] Define `bids` table schema (if needed).
 [ ] Provide user feedback on bid placement.
 [ ] Handle redirection after bid placement.
+
+## Task: Implement Counterbid Functionality for Service Providers
+
+[ ] Add counterbid button to the My Bids panel in the dashboard
+[ ] Create counterbid modal component
+[ ] Implement counterbid logic in the backend
+[ ] Add notifications for counterbids
+[ ] Update bid status tracking
+[ ] Add UI feedback for counterbid actions
