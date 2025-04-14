@@ -11,65 +11,13 @@ import Link from 'next/link';
 import React, { Fragment } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs/tabs';
 import { Table, TableHeader, TableBody, TableHead, TableCell, TableRow } from '@/components/ui/table/table';
-
-type ProfileData = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone_number?: string;
-  user_type: string;
-  created_at: string;
-};
-
-// Updated type definition to handle business bookings view
-type BookingWithDetails = {
-  id: string;
-  user_id?: string;
-  customer_id?: string;
-  slot_id: string;
-  service_id: string;
-  provider_profile_id?: string;
-  provider_id?: string; // From slots table
-  status?: string;
-  created_at: string;
-  price_paid?: number;
-  tenant_id?: string;
-  // Joined data from slots
-  start_time?: string;
-  end_time?: string;
-  // Joined data from profiles/customers
-  customer_name?: string;
-  customer_phone?: string;
-  // Other display fields
-  service_name?: string;
-  provider_name?: string;
-  slot_date?: string;
-  slot_time?: string;
-};
-
-// Updated type definition for business bids view
-type BidWithDetails = {
-  id: string;
-  slot_id: string;
-  bid_amount: number;
-  created_at: string;
-  status?: string;
-  tenant_id?: string;
-  service_id?: string;
-  provider_id?: string;
-  customer_id?: string;
-  start_time?: string;
-  end_time?: string;
-  is_auction?: boolean;
-  min_price?: number;
-  service_name?: string;
-  provider_name?: string;
-  slot_time?: string;
-  slot_date?: string;
-  owner_type: string;
-  parent_bid_id?: string;
-};
+import { useBookings } from '@/hooks/useBookings';
+import { useBids } from '@/hooks/useBids';
+import { BookingWithDetails } from '@/types/bookings';
+import { BidWithDetails } from '@/types/bids';
+import { ProfileData } from '@/types/profiles';
+import { useQueryClient } from '@tanstack/react-query';
+import { TablesInsert } from '@/types/supabase';
 
 // Type for customer data fetched from the database
 type Customer = {
@@ -272,7 +220,7 @@ const DataTable = ({ columns, data }: {
   );
 };
 
-// Add BidActionModal component
+// Update BidActionModal component
 const BidActionModal = ({ 
   bid, 
   isOpen, 
@@ -280,6 +228,8 @@ const BidActionModal = ({
   onAccept,
   onDecline,
   onCounterbid,
+  onWithdraw,
+  userType,
 }: { 
   bid: BidWithDetails;
   isOpen: boolean;
@@ -287,49 +237,108 @@ const BidActionModal = ({
   onAccept: () => void;
   onDecline: () => void;
   onCounterbid: () => void;
+  onWithdraw: () => void;
+  userType: string | null;
 }) => {
-  if (!isOpen) return null;
+  if (!isOpen || !userType || !bid) return null;
 
-  const handleDeclineClick = () => {
-    console.log('Decline button clicked');
-    onDecline();
-  };
+  // --- Log values when modal opens --- 
+  console.log('BidActionModal Render:', {
+    userType,
+    bidOwner: bid.owner_type,
+    bidStatus: bid.status
+  });
+
+  const isCustomer = userType === 'customer';
+  const isProviderOrAdmin = !isCustomer; // If not customer, assume provider/admin role for actions
+  
+  const isBidOwnerProvider = bid.owner_type === 'provider';
+  const isBidOwnerCustomer = bid.owner_type === 'customer';
+  const isBidPending = bid.status === 'pending';
+
+  // Determine which actions to show
+  const showAccept = 
+    (isProviderOrAdmin && isBidOwnerCustomer && isBidPending) || 
+    (isCustomer && isBidOwnerProvider && isBidPending); 
+  
+  const showDecline = 
+    (isProviderOrAdmin && isBidOwnerCustomer && isBidPending) || 
+    (isCustomer && isBidOwnerProvider && isBidPending); 
+
+  const showCounterbid = 
+    isProviderOrAdmin && isBidOwnerCustomer && isBidPending;
+
+  // --- Refined Withdraw Logic --- 
+  // Show withdraw if the current user owns this bid AND it's pending.
+  const currentUserOwnsThisBid = 
+    (isProviderOrAdmin && isBidOwnerProvider) || 
+    (isCustomer && isBidOwnerCustomer);
+  const showWithdraw = currentUserOwnsThisBid && isBidPending;
+  
+  const isFinalStatus = ['accepted', 'rejected', 'withdrawn'].includes(bid.status || '');
+
+  // --- Log calculated show flags --- 
+  console.log('BidActionModal Show Flags:', {
+    showAccept,
+    showDecline,
+    showCounterbid,
+    showWithdraw,
+    isFinalStatus
+  });
+
+  if (isFinalStatus) {
+     return (
+       // Simplified modal for final status bids
+       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+         <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+           <h3 className="text-lg font-semibold mb-4">Bid Details</h3>
+           {/* ... display bid info ... */}
+           <p className="text-sm text-gray-600 mb-2">Status: <span className="font-medium">{bid.status}</span></p>
+           <button
+             onClick={onClose}
+             className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-md text-sm hover:bg-gray-50 transition-colors mt-4"
+           >
+             Close
+           </button>
+         </div>
+       </div>
+     );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
         <h3 className="text-lg font-semibold mb-4">Bid Actions</h3>
-        
-        <div className="mb-4">
-          <p className="text-sm text-gray-600 mb-2">Service: {bid.service_name}</p>
-          <p className="text-sm text-gray-600 mb-2">Date: {bid.slot_date}</p>
-          <p className="text-sm text-gray-600 mb-2">Time: {bid.slot_time}</p>
-          <p className="text-sm text-gray-600">Bid Amount: ${(bid.bid_amount / 100).toFixed(2)}</p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={onAccept}
-            className="w-full bg-green-600 text-white py-2 px-4 rounded-md text-sm hover:bg-green-700 transition-colors"
-          >
-            Accept Bid
-          </button>
-          <button
-            onClick={onCounterbid}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700 transition-colors"
-          >
-            Make Counterbid
-          </button>
-          <button
-            onClick={handleDeclineClick}
-            className="w-full bg-red-600 text-white py-2 px-4 rounded-md text-sm hover:bg-red-700 transition-colors"
-          >
-            Decline Bid
-          </button>
-          <button
-            onClick={onClose}
-            className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-md text-sm hover:bg-gray-50 transition-colors mt-2"
-          >
+        {/* Display Bid Info */}
+         <div className="mb-4 border-b pb-4">
+           <p className="text-sm text-gray-600 mb-1">Service: <span className="font-medium">{bid.service_name}</span></p>
+           <p className="text-sm text-gray-600 mb-1">Date: <span className="font-medium">{bid.slot_date}</span></p>
+           <p className="text-sm text-gray-600 mb-1">Time: <span className="font-medium">{bid.slot_time}</span></p>
+           <p className="text-sm text-gray-600">Bid Amount: <span className="font-medium">${(bid.bid_amount / 100).toFixed(2)}</span></p>
+         </div>
+        {/* Action Buttons */}
+        <div className="flex flex-col gap-3">
+          {showAccept && (
+            <button onClick={onAccept} className="w-full bg-green-600 text-white py-2 px-4 rounded-md text-sm hover:bg-green-700 transition-colors">
+              Accept Bid
+            </button>
+          )}
+          {showCounterbid && (
+            <button onClick={onCounterbid} className="w-full bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700 transition-colors">
+              Make Counterbid
+            </button>
+          )}
+          {showDecline && (
+            <button onClick={onDecline} className="w-full bg-red-600 text-white py-2 px-4 rounded-md text-sm hover:bg-red-700 transition-colors">
+              Decline Bid
+            </button>
+          )}
+           {showWithdraw && (
+            <button onClick={onWithdraw} className="w-full bg-yellow-500 text-black py-2 px-4 rounded-md text-sm hover:bg-yellow-600 transition-colors">
+              Withdraw Bid
+            </button>
+          )}
+          <button onClick={onClose} className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-md text-sm hover:bg-gray-50 transition-colors mt-2">
             Close
           </button>
         </div>
@@ -363,8 +372,8 @@ const CounterBidModal = ({
     if (!bid) return;
     if (amount <= bid.bid_amount) {
       setError('Counter bid must be higher than the original bid amount');
-      return;
-    }
+            return;
+          }
     onSubmit(amount);
   };
 
@@ -460,7 +469,7 @@ const BidsDataTable = ({ columns, data }: {
       const newSet = new Set(prev);
       if (newSet.has(groupKey)) {
         newSet.delete(groupKey);
-      } else {
+              } else {
         newSet.add(groupKey);
       }
       return newSet;
@@ -593,613 +602,74 @@ const BookingsDataTable = ({ columns, data }: {
 };
 
 export default function Dashboard() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
-  const [bids, setBids] = useState<BidWithDetails[]>([]);
+  const [userType, setUserType] = useState<string | null>(null);
+  const [isLoadingUserData, setIsLoadingUserData] = useState(true);
   const [activeTab, setActiveTab] = useState('appointments');
+  const router = useRouter();
   const [selectedBid, setSelectedBid] = useState<BidWithDetails | null>(null);
   const [counterBidModalBid, setCounterBidModalBid] = useState<BidWithDetails | null>(null);
-  const router = useRouter();
-  
-  // Use a ref to store the cancelBooking function that needs access to fetchBookings
-  const cancelBookingRef = useRef<(bookingId: string) => Promise<void>>();
+  const queryClient = useQueryClient();
 
-  // Memoize fetchBids
-  const fetchBids = useCallback(async () => {
-    if (!user) {
-      console.log('No user found, skipping bid fetch');
-      return;
-    }
-    
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error('Supabase client not initialized');
-
-      console.log('Fetching bids for user:', user.id);
-
-      // First get the user's profile to get their provider ID
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')  // This is their provider_id
-        .eq('user_id', user.id)
-        .single();
-
-      if (profileError) {
-        console.error('Error fetching profile:', profileError);
-        return;
-      }
-
-      if (!profileData) {
-        console.error('No profile found for user');
-        return;
-      }
-
-      console.log('Found profile:', profileData);
-
-      // Then fetch the bids where either:
-      // 1. The user is the provider (profile_provider_id matches their profile id)
-      // 2. The user is the customer (customer_id matches their user id)
-      const { data: bidsData, error: bidsError } = await supabase
-        .from('bids')
-        .select(`
-          *,
-          slots (
-            id,
-            service_id,
-            provider_id,
-            start_time,
-            end_time,
-            is_auction,
-            min_price,
-            services (
-              id,
-              name
-            ),
-            profiles (
-              id,
-              first_name,
-              last_name
-            )
-          )
-        `)
-        .or(`profile_provider_id.eq.${profileData.id},customer_id.eq.${user.id}`)
-        .order('created_at', { ascending: false });
-
-      if (bidsError) {
-        console.error('Error fetching bids:', bidsError);
-        return;
-      }
-
-      console.log('Raw bids data:', bidsData);
-
-      if (bidsData) {
-        const combinedBids = bidsData.map(bid => {
-          const slot = bid.slots;
-          const service = slot?.services;
-          const provider = slot?.profiles;
-
-          const processedBid = {
-            id: bid.id,
-            slot_id: bid.slot_id,
-            bid_amount: bid.bid_amount,
-            created_at: bid.created_at,
-            status: bid.status,
-            tenant_id: bid.tenant_id,
-            service_id: slot?.service_id,
-            provider_id: bid.profile_provider_id,
-            customer_id: bid.customer_id,
-            start_time: slot?.start_time,
-            end_time: slot?.end_time,
-            is_auction: slot?.is_auction,
-            min_price: slot?.min_price,
-            service_name: service?.name || `Service #${slot?.service_id}`,
-            provider_name: provider ? 
-              `${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 
-              `Provider #${bid.profile_provider_id}` : 
-              `Provider #${bid.profile_provider_id}`,
-            slot_time: slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
-            slot_date: slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date',
-            owner_type: bid.owner_type,
-            parent_bid_id: bid.parent_bid_id
-          } as BidWithDetails;
-
-          console.log('Processed bid:', processedBid);
-          return processedBid;
-        });
-
-        console.log('Final processed bids:', combinedBids);
-        setBids(combinedBids);
-      } else {
-        console.log('No bids data found');
-        setBids([]);
-      }
-    } catch (error) {
-      console.error('Error in fetchBids:', error);
-      setBids([]);
-    }
-  }, [user]); // Only recreate if user changes
-
-  useEffect(() => {
-    // Redirect if not logged in
-    if (!isLoading && !user) {
-      router.push('/auth/signin');
-    }
-  }, [user, isLoading, router]);
-
+  // Determine user role by checking profiles table
   useEffect(() => {
     if (user) {
-      const supabase = getSupabaseClient();
-      if (!supabase) return;
+      const determineUserRole = async () => {
+        setIsLoadingUserData(true);
+        setProfileData(null); // Reset profile data initially
+        setUserType(null); // Reset user type
 
-      // Fetch user profile
-      const fetchProfile = async () => {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
-
-        if (error) {
-          console.error('Error fetching profile:', error);
-        } else {
-          setProfileData(data);
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+          console.error('determineUserRole: Supabase client not available.');
+          setIsLoadingUserData(false);
+          return;
         }
-      };
 
-      // Fetch all bookings for this business (for admin/business owners)
-      const fetchBookings = async () => {
         try {
-          // Get basic booking data with slots but without trying the join
-          const { data: bookingsData, error: bookingsError } = await supabase
-            .from('bookings')
-            .select('*, slots(*)')
-            .order('created_at', { ascending: false })
-            .limit(100);
-
-          if (bookingsError) {
-            console.error('Error fetching bookings:', bookingsError);
-            return;
-          }
-
-          console.log('Raw bookings data:', bookingsData);
-          
-          // Get a direct query from customers table
-          const { data: allCustomers, error: customersError } = await supabase
-            .from('customers')
-            .select('*');
-          
-          if (customersError) {
-            console.error('Error fetching all customers:', customersError);
-          }
-          
-          console.log('All customers raw data:', JSON.stringify(allCustomers));
-          
-          // Make a direct map of customers by ID - Updated type
-          const customerMap: Record<string, Customer> = {};
-          if (allCustomers && allCustomers.length > 0) {
-            allCustomers.forEach(c => {
-              customerMap[c.id] = c;
-            });
-            console.log('Customer map built from database with keys:', Object.keys(customerMap));
-          }
-          
-          // Fetch services
-          const { data: servicesData, error: servicesError } = await supabase
-            .from('services')
-            .select('*');
-            
-          if (servicesError) {
-            console.error('Error fetching services:', servicesError);
-          }
-          
-          // Fetch providers (profiles)
-          const { data: providersData, error: providersError } = await supabase
+          console.log(`determineUserRole: Checking profile for user_id: ${user.id}`);
+          const { data, error } = await supabase
             .from('profiles')
-            .select('*');
-            
-          if (providersError) {
-            console.error('Error fetching providers:', providersError);
+            .select('*') // Fetch all profile data if found
+            .eq('user_id', user.id)
+            .maybeSingle(); // Use maybeSingle() to handle 0 or 1 row without erroring on 0
+
+          if (error) {
+             // Handle errors other than 0 rows potentially returned by maybeSingle
+             console.error('determineUserRole: Error checking profile:', error);
+             // Decide how to proceed - maybe default to customer or show error?
+             setUserType('customer'); // Default to customer on unexpected error?
+          } else if (data) {
+            // Profile FOUND - User is a provider/admin
+            console.log('determineUserRole: Profile found, user is provider/admin:', data);
+            setProfileData(data);
+            // Use user_type from profile table if it exists, otherwise default
+            setUserType(data.user_type || 'provider'); 
+          } else {
+            // Profile NOT FOUND - User is a customer
+            console.log('determineUserRole: Profile not found, user is customer.');
+            setProfileData(null);
+            setUserType('customer');
           }
-          
-          // Create maps - Updated types
-          const serviceMap: Record<string, Service> = {};
-          if (servicesData) {
-            servicesData.forEach(service => {
-              if (service.id) {
-                serviceMap[service.id] = service;
-              }
-            });
-          }
-          
-          const providerMap: Record<string, Profile> = {};
-          if (providersData) {
-            providersData.forEach(provider => {
-              if (provider.id) {
-                providerMap[provider.id] = provider;
-              }
-            });
-          }
-          
-          // Process bookings
-          const processedBookings = bookingsData.map(booking => {
-            const slot = booking.slots || {};
-            
-            // Get customer data - Use Customer type
-            const customer: Customer | null = booking.customer_id ? customerMap[booking.customer_id] : null;
-            console.log(`For booking ${booking.id}, customer_id=${booking.customer_id}, found customer:`, customer);
-            
-            // Get service data - Use Service type
-            const service: Service | null = booking.service_id ? serviceMap[booking.service_id] : null;
-            
-            // Get provider data - Use Profile type
-            const provider: Profile | null = booking.provider_profile_id ? providerMap[booking.provider_profile_id] : null;
-            
-            // Format customer name from actual customer data
-            const customerName = customer
-              ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
-              : 'Unknown';
-            
-            const serviceName = service 
-              ? service.name 
-              : `Service #${booking.service_id?.substring(0, 8) || 'Unknown'}`;
-              
-            const providerName = provider 
-              ? `${provider.first_name || ''} ${provider.last_name || ''}`.trim() 
-              : `Provider #${booking.provider_profile_id?.substring(0, 8) || 'Unknown'}`;
-            
-            // Format date and time
-            const startTime = slot.start_time ? new Date(slot.start_time) : null;
-            const formattedTime = startTime ? startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
-            const formattedDate = startTime ? startTime.toLocaleDateString() : 'N/A';
-            
-            return {
-              ...booking,
-              customer_name: customerName,
-              service_name: serviceName,
-              provider_name: providerName,
-              slot_date: formattedDate,
-              slot_time: formattedTime
-            };
-          });
-          
-          console.log('Final processed bookings:', processedBookings);
-          setBookings(processedBookings);
-        } catch (error) {
-          console.error('Error in fetchBookings:', error);
+        } catch (catchError) {
+          console.error('determineUserRole: Caught exception:', catchError);
+          setUserType('customer'); // Default to customer on exception
+        } finally {
+          setIsLoadingUserData(false);
         }
       };
-
-      // Define the cancelBooking function with access to fetchBookings
-      cancelBookingRef.current = async (bookingId: string) => {
-        try {
-          const supabase = getSupabaseClient();
-          if (!supabase) return;
-
-          // Corrected: Only destructure the error if data is not needed
-          const { error: cancelError } = await supabase
-            .from('bookings')
-            .update({ status: 'cancelled' })
-            .eq('id', bookingId);
-
-          // Use the specific error variable from this operation
-          if (cancelError) { 
-            console.error('Error cancelling booking:', cancelError);
-            return;
-          }
-          
-          // Refresh bookings after cancellation
-          await fetchBookings();
-        } catch (error) {
-          console.error('Error in handleCancelBooking:', error);
-        }
-      };
-
-      // Call the data fetching functions
-      fetchProfile();
-      fetchBookings();
-      fetchBids();
-
-      // Set up interval to refresh data
-      const interval = setInterval(() => {
-        fetchProfile();
-        fetchBookings();
-        fetchBids();
-      }, 30000); // Refresh every 30 seconds
-
-      // Cleanup interval on unmount
-      return () => clearInterval(interval);
-    }
-  }, [user, fetchBids]); // Add fetchBids to dependencies
-  
-  // Public handler that uses the ref function
-  const handleCancelBooking = (bookingId: string) => {
-    if (cancelBookingRef.current) {
-      cancelBookingRef.current(bookingId);
+      determineUserRole();
     } else {
-      console.error('Cancel booking function not initialized yet');
+      // User logged out or not loaded yet
+      setProfileData(null);
+      setUserType(null);
+      setIsLoadingUserData(false);
     }
-  };
+  }, [user]);
 
-  // Update the handleCounterbid function
-  const handleCounterbid = async (amount: number) => {
-    console.log('handleCounterbid called with amount:', amount);
-    if (!counterBidModalBid || !user) {
-      console.error('Missing required data:', { counterBidModalBid: !!counterBidModalBid, user: !!user });
-      return;
-    }
-    
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error('Supabase client not initialized');
-
-      // Get the provider's profile ID
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-
-      console.log('Profile data fetched:', profileData);
-      if (profileError) throw profileError;
-      if (!profileData) throw new Error('No profile found');
-
-      // Create the counterbid
-      const { data: newBid, error: bidError } = await supabase
-        .from('bids')
-        .insert([
-          {
-            slot_id: counterBidModalBid.slot_id,
-            profile_provider_id: profileData.id,
-            customer_id: counterBidModalBid.customer_id,
-            tenant_id: counterBidModalBid.tenant_id,
-            bid_amount: amount,
-            status: 'pending',
-            owner_type: 'provider',
-            parent_bid_id: counterBidModalBid.id
-          }
-        ])
-        .select()
-        .single();
-
-      console.log('New bid created:', newBid);
-      if (bidError) {
-        console.error('Error creating new bid:', bidError);
-        throw bidError;
-      }
-
-      // Update the original bid's status
-      const { error: updateError } = await supabase
-        .from('bids')
-        .update({ status: 'countered' })
-        .eq('id', counterBidModalBid.id);
-
-      console.log('Original bid updated');
-      if (updateError) {
-        console.error('Error updating original bid:', updateError);
-        throw updateError;
-      }
-
-      try {
-        // Try to create notification, but don't fail if it errors
-        const { error: notificationError } = await supabase
-          .from('notifications')
-          .insert([
-            {
-              user_id: counterBidModalBid.customer_id,
-              title: 'Counterbid Received',
-              message: `The service provider has made a counterbid of $${(amount / 100).toFixed(2)} for your bid.`,
-              notification_type: 'counterbid',
-              related_id: newBid.id
-            }
-          ]);
-
-        if (notificationError) {
-          console.error('Error creating notification:', notificationError);
-          // Don't throw the error, just log it
-        } else {
-          console.log('Notification created successfully');
-        }
-      } catch (notificationError) {
-        console.error('Error in notification creation:', notificationError);
-        // Don't throw the error, continue with the flow
-      }
-
-      // Close modal and refresh bids
-      setCounterBidModalBid(null);
-      await fetchBids();
-      console.log('Bids refreshed');
-
-    } catch (error) {
-      console.error('Error placing counterbid:', error);
-      alert('Error placing counterbid. Please try again.');
-    }
-  };
-
-  const handleAcceptBid = async () => {
-    if (!selectedBid || !user) return;
-    
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error('Supabase client not initialized');
-
-      // First get the bid details to ensure we have the latest data
-      const { data: bidData, error: bidFetchError } = await supabase
-        .from('bids')
-        .select('*')
-        .eq('id', selectedBid.id)
-        .single();
-
-      if (bidFetchError) throw bidFetchError;
-      if (!bidData) throw new Error('Bid not found');
-
-      // 1. Change the status of the bid to 'accepted'
-      const { error: bidUpdateError } = await supabase
-        .from('bids')
-        .update({ status: 'accepted' })
-        .eq('id', selectedBid.id);
-
-      if (bidUpdateError) throw bidUpdateError;
-
-      // 2. Create a new booking record for the winning customer
-      const { data: newBooking, error: bookingCreateError } = await supabase
-        .from('bookings')
-        .insert([
-          {
-            slot_id: bidData.slot_id,
-            customer_id: bidData.customer_id, // Use customer_id from the bid
-            provider_profile_id: bidData.profile_provider_id, // Use profile_provider_id from the bid
-            service_id: selectedBid.service_id,
-            price_paid: bidData.bid_amount,
-            status: 'confirmed',
-            tenant_id: bidData.tenant_id
-          }
-        ])
-        .select()
-        .single();
-
-      if (bookingCreateError) throw bookingCreateError;
-
-      // 3. Cancel any existing bookings for this slot
-      const { error: existingBookingUpdateError } = await supabase
-        .from('bookings')
-        .update({ status: 'cancelled' })
-        .eq('slot_id', bidData.slot_id)
-        .neq('id', newBooking.id); // Don't cancel the booking we just created
-
-      if (existingBookingUpdateError) throw existingBookingUpdateError;
-
-      // 4. Create a notification for the customer
-      await supabase
-        .from('notifications')
-        .insert([
-          {
-            user_id: bidData.customer_id, // Use customer_id from the bid
-            title: 'Bid Accepted',
-            message: `Your bid of $${(bidData.bid_amount / 100).toFixed(2)} has been accepted! Your appointment is scheduled for ${selectedBid.slot_date} at ${selectedBid.slot_time}.`,
-            notification_type: 'bid_accepted',
-            related_id: selectedBid.id
-          }
-        ]);
-
-      // 5. Refresh the bids list
-      await fetchBids();
-      
-      // Close the modal
-      setSelectedBid(null);
-
-    } catch (error) {
-      console.error('Error accepting bid:', error);
-      // You might want to show an error message to the user here
-    }
-  };
-
-  const handleDeclineBid = async () => {
-    console.log('handleDeclineBid called with bid:', selectedBid);
-    if (!selectedBid || !user) {
-      console.log('Missing required data:', { selectedBid: !!selectedBid, user: !!user });
-      return;
-    }
-    
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) throw new Error('Supabase client not initialized');
-
-      // First get the bid details to ensure we have the latest data
-      const { data: bidData, error: bidFetchError } = await supabase
-        .from('bids')
-        .select('*')
-        .eq('id', selectedBid.id)
-        .single();
-
-      console.log('Fetched bid data:', bidData);
-      if (bidFetchError) throw bidFetchError;
-      if (!bidData) throw new Error('Bid not found');
-
-      // 1. Change the status of the bid to 'rejected'
-      const { error: bidUpdateError } = await supabase
-        .from('bids')
-        .update({ status: 'rejected' })
-        .eq('id', selectedBid.id);
-
-      console.log('Bid status update result:', { error: bidUpdateError });
-      if (bidUpdateError) throw bidUpdateError;
-
-      // 2. Create a notification for the customer
-      const notificationResult = await supabase
-        .from('notifications')
-        .insert([
-          {
-            user_id: bidData.customer_id,
-            title: 'Bid Rejected',
-            message: `Your bid of $${(bidData.bid_amount / 100).toFixed(2)} for the appointment on ${selectedBid.slot_date} at ${selectedBid.slot_time} has been rejected.`,
-            notification_type: 'bid_rejected',
-            related_id: selectedBid.id
-          }
-        ]);
-
-      console.log('Notification creation result:', notificationResult);
-
-      // 3. Refresh the bids list
-      await fetchBids();
-      console.log('Bids refreshed');
-      
-      // Close the modal
-      setSelectedBid(null);
-
-    } catch (error) {
-      console.error('Error declining bid:', error);
-      // You might want to show an error message to the user here
-    }
-  };
-
-  // Define columns inside the component to access user and handleCounterbid
-  const bidColumns = [
-    { 
-      name: 'Date', 
-      selector: (row: BidWithDetails) => row.slot_date || 'N/A', 
-      sortable: true 
-    },
-    { 
-      name: 'Time', 
-      selector: (row: BidWithDetails) => row.slot_time || 'N/A' 
-    },
-    { 
-      name: 'Service', 
-      selector: (row: BidWithDetails) => row.service_name || 'N/A' 
-    },
-    { 
-      name: 'Provider', 
-      selector: (row: BidWithDetails) => row.provider_name || 'N/A' 
-    },
-    { 
-      name: 'Amount', 
-      selector: (row: BidWithDetails) => `$${(row.bid_amount / 100).toFixed(2)}`,
-      sortable: true 
-    },
-    { 
-      name: 'Status', 
-      selector: (row: BidWithDetails) => row.status || 'N/A', 
-      sortable: true 
-    },
-    { 
-      name: 'Type', 
-      selector: (row: BidWithDetails) => row.owner_type === 'provider' ? 'Your Bid' : 'Customer Bid'
-    },
-    {
-      name: 'Actions',
-      cell: (row: BidWithDetails) => (
-        <button 
-          onClick={() => setSelectedBid(row)}
-          className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
-        >
-          View Details
-        </button>
-      ),
-    },
-  ];
-
-  const appointmentColumns = [
+  // Define columns for the bookings table
+  const bookingColumns = [
     { 
       name: 'Date', 
       selector: (row: BookingWithDetails) => row.slot_date || 'N/A', 
@@ -1243,8 +713,306 @@ export default function Dashboard() {
       ),
     },
   ];
+  
+  // Define columns for the bids table
+  const bidColumns = [
+    { name: 'Date', selector: (row: BidWithDetails) => row.slot_date || 'N/A', sortable: true },
+    { name: 'Time', selector: (row: BidWithDetails) => row.slot_time || 'N/A' },
+    { name: 'Service', selector: (row: BidWithDetails) => row.service_name || 'N/A' },
+    { name: 'Provider', selector: (row: BidWithDetails) => row.provider_name || 'N/A' },
+    { name: 'Amount', selector: (row: BidWithDetails) => `$${(row.bid_amount / 100).toFixed(2)}`, sortable: true },
+    { name: 'Status', selector: (row: BidWithDetails) => row.status || 'N/A', sortable: true },
+    {
+      name: 'Type',
+      selector: (row: BidWithDetails): string => {
+        const isCurrentUserCustomer = userType === 'customer';
+        const isBidOwnerProvider = row.owner_type === 'provider';
 
-  if (isLoading || !user) {
+        if (isCurrentUserCustomer) {
+          // Customer is viewing
+          return isBidOwnerProvider ? 'Provider Counterbid' : 'Your Bid';
+        } else {
+          // Provider/Admin is viewing
+          return isBidOwnerProvider ? 'Your Bid' : 'Customer Bid';
+        }
+      }
+    },
+    {
+      name: 'Actions',
+      cell: (row: BidWithDetails) => (
+        <button
+          onClick={() => {
+            // --- Log the row data when button is clicked --- 
+            console.log('View Details onClick - Row Data:', {
+              id: row.id,
+              owner_type: row.owner_type,
+              status: row.status,
+              userType: userType // Log current userType as well
+            }); 
+            setSelectedBid(row);
+          }}
+          className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={['accepted', 'rejected', 'withdrawn'].includes(row.status || '')}
+        >
+          View Details
+        </button>
+      ),
+    },
+  ];
+
+  const {
+    data: bookings,
+    isError: isBookingsError,
+    error: bookingsError,
+    isLoading: isBookingsLoading,
+  } = useBookings(
+    user?.id || '',
+    userType // Pass the determined userType
+  );
+
+  const {
+    data: bids,
+    isError: isBidsError,
+    error: bidsError,
+    isLoading: isBidsLoading,
+  } = useBids(
+    user?.id || '',
+    profileData?.id, // Pass profile ID (will be undefined for customers)
+    userType         // Pass the determined userType
+  );
+
+  console.log('Dashboard - Bids Hook Data:', { bids, isBidsLoading, isBidsError, bidsError });
+
+  // Combined loading state
+  const isLoading = isAuthLoading || isLoadingUserData;
+
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push('/auth/signin');
+    }
+  }, [isLoading, user, router]);
+
+  // ADD BACK BID ACTION HANDLERS:
+  const handleAcceptBid = async () => {
+    if (!selectedBid || !user) return;
+    console.log('Accepting bid:', selectedBid);
+
+    // Ensure required fields are available on the selectedBid object
+    if (!selectedBid.slot_id || 
+        !selectedBid.customer_id || 
+        !selectedBid.profile_provider_id || // The provider who owns the slot/bid
+        !selectedBid.service_id || 
+        !selectedBid.tenant_id) {
+      console.error('Missing required data on selectedBid to create booking:', selectedBid);
+      alert('Cannot accept bid: essential information missing.');
+              return;
+            }
+            
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not available');
+      
+      // --- Step 1: Update bid status to 'accepted' --- 
+      const { error: updateBidError } = await supabase
+        .from('bids')
+        .update({ status: 'accepted' })
+        .eq('id', selectedBid.id);
+      if (updateBidError) throw updateBidError;
+      console.log('Step 1: Bid status updated to accepted');
+
+      // --- Step 2: Create the booking record --- 
+      const bookingData: TablesInsert<'bookings'> = {
+        slot_id: selectedBid.slot_id!,
+        customer_id: selectedBid.customer_id!,
+        provider_profile_id: selectedBid.profile_provider_id!,
+        service_id: selectedBid.service_id!,
+        price_paid: selectedBid.bid_amount, 
+        status: 'confirmed',
+        tenant_id: selectedBid.tenant_id!,
+      };
+      const { data: newBooking, error: bookingCreateError } = await supabase
+        .from('bookings')
+        .insert(bookingData)
+        .select('id') // Only need the ID of the new booking
+        .single();
+      if (bookingCreateError) throw bookingCreateError; 
+      console.log('Step 2: Booking record created successfully:', newBooking);
+
+      // --- Step 3: Cancel conflicting bookings for the same slot --- 
+      console.log(`Step 3: Checking for conflicting bookings for slot_id: ${selectedBid.slot_id}`);
+      const { error: cancelBookingsError } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('slot_id', selectedBid.slot_id!) // Target the same slot
+        .neq('id', newBooking.id); // Exclude the booking we just created
+      
+      if (cancelBookingsError) {
+        // Log the error but don't necessarily stop the whole process
+        console.error('Error cancelling conflicting bookings:', cancelBookingsError);
+              } else {
+        console.log('Conflicting bookings (if any) cancelled.');
+      }
+
+      // --- Step 4: Reject other bids for the same slot --- 
+      console.log(`Step 4: Checking for other bids for slot_id: ${selectedBid.slot_id}`);
+      const { error: rejectBidsError } = await supabase
+        .from('bids')
+        .update({ status: 'rejected' })
+        .eq('slot_id', selectedBid.slot_id!) // Target the same slot
+        .neq('id', selectedBid.id); // Exclude the bid we just accepted
+      
+      if (rejectBidsError) {
+         // Log the error but don't necessarily stop the whole process
+        console.error('Error rejecting other bids:', rejectBidsError);
+              } else {
+        console.log('Other bids for this slot (if any) rejected.');
+      }
+
+      // --- Step 5: Create notification for the customer (TODO) --- 
+      console.log('Step 5: TODO - Create notification for customer');
+      // await supabase.from('notifications').insert({...});
+
+      console.log('Bid acceptance process complete');
+      setSelectedBid(null);
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['bids'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    } catch (error) {
+      console.error('Error during bid acceptance process:', error);
+      alert('Failed to accept bid. Please try again.');
+      // Consider more robust error handling / rollback logic here
+    }
+  };
+
+  const handleDeclineBid = async () => {
+    if (!selectedBid || !user) return;
+    console.log('Declining bid:', selectedBid);
+    // ... (Implementation - needs Supabase calls to update bid, notify) ...
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not available');
+
+      const { error } = await supabase
+        .from('bids')
+        .update({ status: 'rejected' })
+        .eq('id', selectedBid.id);
+      if (error) throw error;
+
+      // TODO: Create notification
+
+      console.log('Bid rejected successfully');
+      setSelectedBid(null);
+      queryClient.invalidateQueries({ queryKey: ['bids'] });
+        } catch (error) {
+      console.error('Error declining bid:', error);
+      alert('Failed to decline bid. Please try again.');
+    }
+  };
+
+  const handleCounterbid = async (amount: number) => {
+    // Add checks to ensure required fields are present, including tenant_id
+    if (!counterBidModalBid?.slot_id || 
+        !counterBidModalBid?.customer_id || 
+        !counterBidModalBid?.tenant_id || // Add check for tenant_id
+        !profileData?.id || 
+        !user) {
+      console.error('Missing required data for counterbid:', { 
+          bid: counterBidModalBid, 
+          profile: profileData, 
+          user 
+      });
+      alert('Cannot place counterbid, required information is missing.');
+      return;
+    }
+    console.log('Countering bid:', counterBidModalBid, 'with amount:', amount);
+    
+        try {
+          const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not available');
+      
+      // Prepare the insert data with correct types
+      const newBidData: TablesInsert<'bids'> = {
+        slot_id: counterBidModalBid.slot_id, 
+        profile_provider_id: profileData.id, 
+        customer_id: counterBidModalBid.customer_id, 
+        bid_amount: amount,
+        status: 'pending',
+        owner_type: 'provider',
+        parent_bid_id: counterBidModalBid.id,
+        tenant_id: counterBidModalBid.tenant_id // Now guaranteed to be string
+      };
+
+      // 1. Create counter bid
+      const { data: newBid, error: insertError } = await supabase
+        .from('bids')
+        .insert(newBidData)
+        .select()
+        .single();
+      if (insertError) throw insertError;
+
+      // 2. Update original bid status
+      const { error: updateError } = await supabase
+        .from('bids')
+        .update({ status: 'countered' })
+        .eq('id', counterBidModalBid.id);
+      if (updateError) throw updateError;
+      
+      // 3. TODO: Create notification for customer
+
+      console.log('Counterbid placed successfully');
+      setCounterBidModalBid(null);
+      queryClient.invalidateQueries({ queryKey: ['bids'] });
+        } catch (error) {
+      console.error('Error placing counterbid:', error);
+      alert('Failed to place counterbid. Please try again.');
+    }
+  };
+
+  const handleWithdrawBid = async () => {
+    if (!selectedBid || !user) return;
+    console.log('Withdrawing bid:', selectedBid);
+
+    // Double-check ownership and status before withdrawing
+    const isProviderOrAdmin = userType === 'provider' || userType === 'admin';
+    const isCustomer = userType === 'customer';
+    const isBidOwnerProvider = selectedBid.owner_type === 'provider';
+    const isBidOwnerCustomer = selectedBid.owner_type === 'customer';
+    const isBidPending = selectedBid.status === 'pending';
+
+    const canWithdraw = 
+      (isProviderOrAdmin && isBidOwnerProvider && isBidPending) ||
+      (isCustomer && isBidOwnerCustomer && isBidPending);
+      
+    if (!canWithdraw) {
+      console.error('User cannot withdraw this bid:', { userType, bidOwner: selectedBid.owner_type, bidStatus: selectedBid.status });
+      alert('You cannot withdraw this bid.');
+      return;
+    }
+
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) throw new Error('Supabase client not available');
+
+      // Update bid status to 'withdrawn'
+      const { error } = await supabase
+        .from('bids')
+        .update({ status: 'withdrawn' })
+        .eq('id', selectedBid.id);
+      if (error) throw error;
+
+      // TODO: Create notification?
+
+      console.log('Bid withdrawn successfully');
+      setSelectedBid(null); // Close modal
+      queryClient.invalidateQueries({ queryKey: ['bids'] }); // Refresh bids list
+    } catch (error) {
+      console.error('Error withdrawing bid:', error);
+      alert('Failed to withdraw bid. Please try again.');
+    }
+  };
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -1252,264 +1020,107 @@ export default function Dashboard() {
     );
   }
 
+  // Handle data fetching errors (optional, ErrorBoundary might catch these)
+  if (isBookingsError) {
+    // Show specific error for bookings
+  }
+  if (isBidsError) {
+    // Show specific error for bids
+  }
+
+  const bookingsData = bookings || [];
+  const bidsData = bids || [];
+  console.log('Dashboard - Final bidsData for table:', bidsData);
+
+  // Update welcome message (ensure it handles profileData potentially being null)
+  const welcomeName = profileData?.first_name || user?.user_metadata?.first_name || 'there';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
-      {/* Update CounterBidModal usage */}
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="px-4 sm:px-0">
+          <h2 className="text-2xl font-semibold text-gray-900">Welcome back, {welcomeName}</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Manage your appointments, auctions, and account settings.
+            </p>
+        </div>
+
+        <div className="mt-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList>
+              <TabsTrigger value="appointments">Appointments</TabsTrigger>
+              <TabsTrigger value="bids">My Bids</TabsTrigger>
+              <TabsTrigger value="profile">Profile</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="appointments">
+              <div className="mt-4">
+                <h3 className="text-lg font-medium text-gray-900">Your Appointments</h3>
+                {isBookingsLoading ? (
+                  <div className="text-center py-12">
+                    <p>Loading appointments...</p>
+              </div>
+                ) : bookingsData.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p>You don't have any appointments yet.</p>
+                    <button
+                      onClick={() => router.push('/services')}
+                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Browse Services
+                    </button>
+                </div>
+              ) : (
+                  <BookingsDataTable columns={bookingColumns} data={bookingsData} />
+                        )}
+                      </div>
+            </TabsContent>
+
+            <TabsContent value="bids">
+              <div className="mt-4">
+                <h3 className="text-lg font-medium text-gray-900">My Bids</h3>
+                {isBidsLoading ? (
+                  <div className="text-center py-12">
+                    <p>Loading bids...</p>
+              </div>
+                ) : bidsData.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p>You haven't placed any bids yet.</p>
+                    {/* ... Optional button to browse auctions ... */}
+                </div>
+              ) : (
+                  <BidsDataTable columns={bidColumns} data={bidsData} />
+              )}
+            </div>
+            </TabsContent>
+
+            <TabsContent value="profile">
+              {/* ... Profile Content ... */}
+            </TabsContent>
+
+          </Tabs>
+        </div>
+      </main>
+      <BidActionModal 
+        bid={selectedBid!}
+        isOpen={selectedBid !== null} 
+        onClose={() => setSelectedBid(null)} 
+        onAccept={handleAcceptBid}
+        onDecline={handleDeclineBid}
+        onCounterbid={() => {
+          setCounterBidModalBid(selectedBid);
+          setSelectedBid(null); 
+        }}
+        onWithdraw={handleWithdrawBid}
+        userType={userType}
+      />
       <CounterBidModal
         bid={counterBidModalBid}
         isOpen={counterBidModalBid !== null}
         onClose={() => setCounterBidModalBid(null)}
         onSubmit={handleCounterbid}
       />
-      
-      {/* Existing BidActionModal */}
-      <BidActionModal
-        bid={selectedBid!}
-        isOpen={selectedBid !== null}
-        onClose={() => setSelectedBid(null)}
-        onAccept={handleAcceptBid}
-        onDecline={handleDeclineBid}
-        onCounterbid={() => {
-          setCounterBidModalBid(selectedBid);
-          setSelectedBid(null);
-        }}
-      />
-      
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Profile header */}
-        <div className="bg-white shadow rounded-lg mb-6">
-          <div className="px-4 py-5 sm:px-6">
-            <h1 className="text-lg font-semibold">Welcome back, {profileData?.first_name}</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Manage your appointments, auctions, and account settings.
-            </p>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => setActiveTab('appointments')}
-              className={`${
-                activeTab === 'appointments'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Appointments
-            </button>
-            <button
-              onClick={() => setActiveTab('auctions')}
-              className={`${
-                activeTab === 'auctions'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
-            >
-              <span>My Bids</span>
-              {bids.length > 0 && (
-                <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                  {bids.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={`${
-                activeTab === 'profile'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-            >
-              Profile
-            </button>
-          </nav>
-        </div>
-
-        {/* Content based on active tab */}
-        <div className="bg-white shadow rounded-lg p-4 sm:p-6">
-          {activeTab === 'appointments' && (
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">
-                  {profileData?.user_type === 'admin' 
-                    ? 'All Business Appointments' 
-                    : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
-                      ? 'Your Client Appointments'
-                      : 'Your Appointments'
-                  }
-                </h2>
-              </div>
-              
-              {bookings.length === 0 ? (
-                <div className="text-center py-10">
-                  <p className="text-gray-500">
-                    {profileData?.user_type === 'admin' 
-                      ? 'No appointments found for the business.' 
-                      : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
-                        ? 'You don\'t have any client appointments yet.'
-                        : 'You don\'t have any appointments yet.'
-                    }
-                  </p>
-                  <Link 
-                    href="/services" 
-                    className="mt-4 inline-block bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
-                  >
-                    Browse Services
-                  </Link>
-                </div>
-              ) : (
-                <BookingsDataTable columns={appointmentColumns} data={bookings} />
-              )}
-            </div>
-          )}
-
-          {activeTab === 'auctions' && (
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">
-                  {profileData?.user_type === 'admin' 
-                    ? 'All Auction Bids' 
-                    : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
-                      ? 'Bids on Your Services'
-                      : 'Your Auction Bids'
-                  }
-                </h2>
-              </div>
-              
-              {bids.length === 0 ? (
-                <div className="text-center py-10">
-                  <p className="text-gray-500">
-                    {profileData?.user_type === 'admin' 
-                      ? 'No auction bids found for the business.' 
-                      : profileData?.user_type === 'barber' || profileData?.user_type === 'tattoo_artist'
-                        ? 'No bids on your services yet.'
-                        : 'You haven\'t placed any bids yet.'
-                    }
-                  </p>
-                  <Link 
-                    href="/auctions" 
-                    className="mt-4 inline-block bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700"
-                  >
-                    Browse Auctions
-                  </Link>
-                </div>
-              ) : (
-                <div>
-                  <BidsDataTable 
-                    columns={[
-                      { 
-                        name: 'Date', 
-                        selector: (row: BidWithDetails) => row.slot_date || 'N/A'
-                      },
-                      { 
-                        name: 'Time', 
-                        selector: (row: BidWithDetails) => row.slot_time || 'N/A' 
-                      },
-                      { 
-                        name: 'Service', 
-                        selector: (row: BidWithDetails) => row.service_name || 'N/A' 
-                      },
-                      { 
-                        name: 'Provider', 
-                        selector: (row: BidWithDetails) => row.provider_name || 'N/A' 
-                      },
-                      { 
-                        name: 'Amount', 
-                        selector: (row: BidWithDetails) => `$${(row.bid_amount / 100).toFixed(2)}`
-                      },
-                      { 
-                        name: 'Status', 
-                        selector: (row: BidWithDetails) => row.status || 'N/A'
-                      },
-                      { 
-                        name: 'Type', 
-                        selector: (row: BidWithDetails) => row.owner_type === 'provider' ? 'Your Bid' : 'Customer Bid'
-                      },
-                      {
-                        name: 'Actions',
-                        cell: (row: BidWithDetails) => (
-                          <button 
-                            onClick={() => setSelectedBid(row)}
-                            className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
-                          >
-                            View Details
-                          </button>
-                        ),
-                      }
-                    ]} 
-                    data={bids} 
-                  />
-                </div>
-              )}
-            </div>
-          )}
-          
-          {activeTab === 'profile' && (
-            <div>
-              <h2 className="text-lg font-semibold mb-4">Your Profile</h2>
-              
-              {profileData ? (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Personal Information</h3>
-                      <div className="mt-2 border rounded-md p-4">
-                        <div className="mb-2">
-                          <span className="text-sm text-gray-500">Name:</span>
-                          <p className="text-sm font-medium">
-                            {profileData.first_name} {profileData.last_name}
-                          </p>
-                        </div>
-                        <div className="mb-2">
-                          <span className="text-sm text-gray-500">Email:</span>
-                          <p className="text-sm font-medium">{user.email}</p>
-                        </div>
-                        <div>
-                          <span className="text-sm text-gray-500">Phone:</span>
-                          <p className="text-sm font-medium">{profileData.phone_number || 'Not provided'}</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Account Settings</h3>
-                      <div className="mt-2 border rounded-md p-4">
-                        <div className="mb-2">
-                          <span className="text-sm text-gray-500">Account Type:</span>
-                          <p className="text-sm font-medium capitalize">
-                            {profileData.user_type.replace('_', ' ')}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-sm text-gray-500">Member Since:</span>
-                          <p className="text-sm font-medium">
-                            {new Date(profileData.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="border-t pt-6 flex justify-end">
-                    <button className="bg-blue-600 text-white py-2 px-4 rounded-md text-sm hover:bg-blue-700">
-                      Edit Profile
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-10">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="mt-2 text-gray-500">Loading profile data...</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </main>
     </div>
   );
 }

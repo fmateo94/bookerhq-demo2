@@ -11,9 +11,18 @@ export default function Navbar() {
   const router = useRouter();
 
   const handleSignOut = async () => {
-    await signOut();
-    router.push('/');
-    router.refresh();
+    try {
+      console.log('Starting sign out process...');
+      await signOut();
+      console.log('Sign out successful, redirecting...');
+      router.push('/');
+      router.refresh();
+    } catch (error) {
+      console.error('Error during sign out:', error);
+      // Still try to redirect even if there's an error
+      router.push('/');
+      router.refresh();
+    }
   };
 
   return (

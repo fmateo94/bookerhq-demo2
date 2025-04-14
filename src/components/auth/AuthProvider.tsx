@@ -20,7 +20,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-export default function AuthProvider({ children }: { children: React.ReactNode }) {
+const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,9 +69,22 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const signOut = async () => {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      await supabase.auth.signOut();
+    try {
+      console.log('AuthProvider: Starting sign out...');
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.error('AuthProvider: Error signing out:', error);
+          throw error;
+        }
+        console.log('AuthProvider: Sign out successful');
+        setUser(null);
+        setSession(null);
+      }
+    } catch (error) {
+      console.error('AuthProvider: Unexpected error during sign out:', error);
+      throw error;
     }
   };
 
@@ -83,4 +96,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
+};
+
+export default AuthProvider;
