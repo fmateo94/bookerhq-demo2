@@ -1063,7 +1063,7 @@ export default function Dashboard() {
               </div>
                 ) : bookingsData.length === 0 ? (
                   <div className="text-center py-12">
-                    <p>You don't have any appointments yet.</p>
+                    <p>You don&apos;t have any appointments yet.</p>
                     <button
                       onClick={() => router.push('/services')}
                       className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -1086,7 +1086,7 @@ export default function Dashboard() {
               </div>
                 ) : bidsData.length === 0 ? (
                   <div className="text-center py-12">
-                    <p>You haven't placed any bids yet.</p>
+                    <p>You haven&apos;t placed any bids yet.</p>
                     {/* ... Optional button to browse auctions ... */}
                 </div>
               ) : (

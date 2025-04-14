@@ -1,11 +1,20 @@
 import { useQuery, UseQueryResult } from '@tanstack/react-query';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { BookingWithDetails } from '@/types/bookings';
+import { Tables } from '@/types/supabase'; // Import base Supabase types
+
+// Define the expected shape of the raw data from Supabase query
+type RawBookingData = Tables<'bookings'> & {
+  slots: Tables<'slots'> | null;
+  services: Tables<'services'> | null;
+  profiles: Tables<'profiles'> | null; // Assuming profiles is joined via bookings_provider_profile_id_fkey
+  customers: Tables<'customers'> | null;
+};
 
 const CACHE_KEY = 'bookings_cache';
 const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
 
-const processBookings = (bookingsData: any[]): BookingWithDetails[] => {
+const processBookings = (bookingsData: RawBookingData[]): BookingWithDetails[] => {
   return bookingsData.map(booking => {
     const slot = booking.slots;
     const service = booking.services;
@@ -14,20 +23,20 @@ const processBookings = (bookingsData: any[]): BookingWithDetails[] => {
 
     return {
       id: booking.id,
-      slot_id: booking.slot_id,
-      customer_id: booking.customer_id,
-      service_id: booking.service_id,
-      provider_profile_id: booking.provider_profile_id,
-      status: booking.status,
+      slot_id: booking.slot_id!,
+      customer_id: booking.customer_id || undefined,
+      service_id: booking.service_id!,
+      provider_profile_id: booking.provider_profile_id || undefined,
+      status: booking.status || undefined,
       created_at: booking.created_at,
-      price_paid: booking.price_paid,
-      tenant_id: booking.tenant_id,
+      price_paid: booking.price_paid || undefined,
+      tenant_id: booking.tenant_id || undefined,
       slot_date: slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date',
       slot_time: slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
       service_name: service?.name || `Service #${booking.service_id}`,
       provider_name: provider ? `${provider.first_name || ''} ${provider.last_name || ''}`.trim() : `Provider #${booking.provider_profile_id}`,
       customer_name: customer ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() : `Customer #${booking.customer_id}`,
-      customer_phone: customer?.phone_number
+      customer_phone: customer?.phone_number || undefined
     };
   });
 };

@@ -1,37 +1,51 @@
 import { useQuery, UseQueryResult } from '@tanstack/react-query';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { BidWithDetails } from '@/types/bids';
+import { Tables } from '@/types/supabase'; // Import base Supabase types
+
+// Define the expected shape of the raw data from Supabase query
+type RawBidData = Tables<'bids'> & {
+  slots: (Tables<'slots'> & {
+    services: Tables<'services'> | null;
+    profiles: Tables<'profiles'> | null;
+  }) | null;
+};
 
 const CACHE_KEY = 'bids_cache';
 const CACHE_TIME = 1 * 60 * 1000; // 1 minute
 
-const processBids = (bidsData: any[]): BidWithDetails[] => {
+const processBids = (bidsData: RawBidData[]): BidWithDetails[] => {
   return bidsData.map(bid => {
     const slot = bid.slots;
     const service = slot?.services;
     const provider = slot?.profiles;
 
+    // Safely access properties
+    const providerName = provider ? `${provider.first_name || ''} ${provider.last_name || ''}`.trim() : `Provider #${slot?.provider_id}`;
+    const slotTime = slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time';
+    const slotDate = slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date';
+    
     return {
       id: bid.id,
-      slot_id: bid.slot_id,
-      bid_amount: bid.bid_amount,
+      slot_id: bid.slot_id!,
+      bid_amount: bid.bid_amount!,
       created_at: bid.created_at,
-      status: bid.status,
-      tenant_id: bid.tenant_id,
+      status: bid.status || undefined,
+      tenant_id: bid.tenant_id || undefined,
       service_id: slot?.service_id,
-      provider_id: slot?.provider_id, // Provider ID from slots table
-      profile_provider_id: bid.profile_provider_id, // Provider ID from bids table
-      customer_id: bid.customer_id,
+      provider_id: slot?.provider_id,
+      profile_provider_id: bid.profile_provider_id || undefined,
+      customer_id: bid.customer_id || undefined,
       start_time: slot?.start_time,
       end_time: slot?.end_time,
       is_auction: slot?.is_auction,
       min_price: slot?.min_price,
       service_name: service?.name || `Service #${slot?.service_id}`,
-      provider_name: provider ? `${provider.first_name || ''} ${provider.last_name || ''}`.trim() : `Provider #${slot?.provider_id}`,
-      slot_time: slot?.start_time ? new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unknown time',
-      slot_date: slot?.start_time ? new Date(slot.start_time).toLocaleDateString() : 'Unknown date',
-      owner_type: bid.owner_type,
-      parent_bid_id: bid.parent_bid_id
+      provider_name: providerName,
+      slot_time: slotTime,
+      slot_date: slotDate,
+      owner_type: bid.owner_type!,
+      parent_bid_id: bid.parent_bid_id || undefined,
     };
   });
 };
