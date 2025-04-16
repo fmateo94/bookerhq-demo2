@@ -777,14 +777,15 @@ function DashboardContent() {
             setProfileData(fullProfileData);
             
             // Use the user_type from the profile if available, otherwise default to barber
-            const userTypeFromProfile = (profileData as any).user_type;
+            // Use optional chaining to avoid type errors
+            const userTypeFromProfile = profileData.user_type as string | undefined;
             console.log('User type from profile:', userTypeFromProfile);
             
             if (userTypeFromProfile === 'admin') {
               setUserType('admin');
               console.log('User identified as admin');
-            } else if (['barber', 'tattoo_artist'].includes(userTypeFromProfile)) {
-              setUserType(userTypeFromProfile);
+            } else if (['barber', 'tattoo_artist'].includes(userTypeFromProfile || '')) {
+              setUserType(userTypeFromProfile as 'barber' | 'tattoo_artist');
               console.log(`User identified as ${userTypeFromProfile}`);
             } else {
               // Default fallback
@@ -807,8 +808,13 @@ function DashboardContent() {
             console.log('User is a customer with data:', customerData);
             
             // Try to get tenant ID from a separate query if needed
-            // Use optional chaining to avoid type error
-            let tenantId = (customerData as any).tenant_id;
+            // We need to check if tenant_id exists on the object since it's not in the type
+            let tenantId: string | undefined = undefined;
+            // Look for a tenant ID on the customerData object using an index accessor
+            if (customerData && typeof customerData === 'object' && 'tenant_id' in customerData) {
+              tenantId = (customerData as Record<string, string | null>)['tenant_id'] as string;
+            }
+            
             if (!tenantId) {
               const { data: customerTenantData } = await supabase
                 .from('tenants')
@@ -1097,7 +1103,7 @@ function DashboardContent() {
       };
 
       // 1. Create counter bid
-      const { data: newBid, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('bids')
         .insert(newBidData)
         .select()
