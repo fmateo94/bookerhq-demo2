@@ -7,6 +7,7 @@ export type ProfileData = {
   phone_number?: string | null; // Allow null
   user_type: string | null;     // Allow null
   created_at: string | null;    // Allow null
+  tenant_id?: string | null;    // Add tenant_id field
   // Add any other relevant profile fields from your actual data
   avatar_url?: string | null;
   bio?: string | null;

@@ -821,6 +821,19 @@ function DashboardContent() {
   // Combined loading state that doesn't directly depend on hooks yet
   const isLoading = isAuthLoading || isLoadingUserData || isBookingsLoading || isBidsLoading;
   
+  // Fix and clarify tenant ID for admin users
+  const currentTenantId = profileData?.tenant_id ||
+    (userType === 'admin' && selectedBid?.tenant_id ? selectedBid.tenant_id : undefined);
+  
+  // Add debug logging to see what's happening
+  console.log('Dashboard data check:', {
+    userType,
+    normalizedUserType,
+    profileId: profileData?.id,
+    tenantId: currentTenantId,
+    userId: user?.id
+  });
+  
   // Use custom loading handlers with the hooks
   const {
     data: bookings,
@@ -828,7 +841,8 @@ function DashboardContent() {
     isError: bookingsErrorState,
   } = useBookings(
     user?.id || '',
-    normalizedUserType
+    normalizedUserType,
+    currentTenantId  // Pass tenant ID for proper filtering
   );
   
   // Update our local loading state when the hook state changes
@@ -844,7 +858,8 @@ function DashboardContent() {
   } = useBids(
     user?.id || '',
     profileData?.id,
-    normalizedUserType
+    normalizedUserType,
+    currentTenantId // Pass tenant ID to ensure proper scoping
   );
   
   // Update our local loading state when the hook state changes

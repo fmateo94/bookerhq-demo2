@@ -41,12 +41,12 @@ const processBookings = (bookingsData: RawBookingData[]): BookingWithDetails[] =
   });
 };
 
-const fetchBookingsFromSupabase = async (userId: string, userType: string | null) => {
+const fetchBookingsFromSupabase = async (userId: string, userType: string | null, tenantId?: string) => {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase client not initialized');
   if (!userId || !userType) throw new Error('User ID or User Type missing');
 
-  console.log(`fetchBookingsFromSupabase: Fetching for userType: ${userType}, userId: ${userId}`);
+  console.log(`fetchBookingsFromSupabase: Fetching for userType: ${userType}, userId: ${userId}, tenantId: ${tenantId}`);
 
   let query = supabase
     .from('bookings')
@@ -82,8 +82,11 @@ const fetchBookingsFromSupabase = async (userId: string, userType: string | null
   } else if (userType === 'admin') {
     // For admin, fetch all bookings (potentially filter by tenant_id if applicable)
     console.log('fetchBookingsFromSupabase: Applying admin view (all bookings)');
-    // No specific user/provider filter needed for admin view
-    // Add tenant filtering here if needed: query = query.eq('tenant_id', tenantId);
+    // Add tenant filtering for admin users
+    if (tenantId) {
+      console.log(`fetchBookingsFromSupabase: Filtering admin view by tenant_id: ${tenantId}`);
+      query = query.eq('tenant_id', tenantId);
+    }
   } else {
      console.warn(`fetchBookingsFromSupabase: Unknown userType: ${userType}, returning no bookings.`);
      return []; // Return empty if user type is unknown/unhandled
@@ -117,9 +120,9 @@ const setBookingsCache = (bookings: BookingWithDetails[]) => {
   }
 };
 
-export const useBookings = (userId: string, userType: string | null): UseQueryResult<BookingWithDetails[], Error> => {
+export const useBookings = (userId: string, userType: string | null, tenantId?: string): UseQueryResult<BookingWithDetails[], Error> => {
   return useQuery({
-    queryKey: ['bookings', userId, userType],
+    queryKey: ['bookings', userId, userType, tenantId],
     queryFn: async () => {
        if (!userId || !userType) {
         console.log('useBookings: Skipping fetch, missing userId or userType');
@@ -127,7 +130,7 @@ export const useBookings = (userId: string, userType: string | null): UseQueryRe
       }
       // Fetching logic now happens inside fetchBookingsFromSupabase based on type
       try {
-        const data = await fetchBookingsFromSupabase(userId, userType);
+        const data = await fetchBookingsFromSupabase(userId, userType, tenantId);
         const processedBookings = processBookings(data);
         
         // Update cache with fresh data
