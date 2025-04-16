@@ -805,31 +805,51 @@ function DashboardContent() {
     }
   }, [user]);
   
-  // Combined loading state
-  const isLoading = isAuthLoading || isLoadingUserData || isBookingsLoading || isBidsLoading;
-
   // Normalize userType for hook usage - convert 'provider' to 'barber' for compatibility
-  const normalizedUserType = userType === 'provider' ? 'barber' : userType;
-
+  // Ensure we have a fallback if userType is null
+  const normalizedUserType = userType === 'provider' ? 'barber' : (userType || 'customer');
+  
+  // Initialize loading states before the hooks
+  const [isBookingsLoading, setIsBookingsLoading] = useState(true);
+  const [isBookingsError, setIsBookingsError] = useState(false);
+  const [isBidsLoading, setIsBidsLoading] = useState(true);
+  const [isBidsError, setIsBidsError] = useState(false);
+  
+  // Combined loading state that doesn't directly depend on hooks yet
+  const isLoading = isAuthLoading || isLoadingUserData || isBookingsLoading || isBidsLoading;
+  
+  // Use custom loading handlers with the hooks
   const {
     data: bookings,
-    isLoading: isBookingsLoading,
-    isError: isBookingsError
+    isLoading: bookingsLoadingState,
+    isError: bookingsErrorState,
   } = useBookings(
     user?.id || '',
-    normalizedUserType // Pass the normalized userType
+    normalizedUserType
   );
-
+  
+  // Update our local loading state when the hook state changes
+  useEffect(() => {
+    setIsBookingsLoading(bookingsLoadingState);
+    setIsBookingsError(bookingsErrorState);
+  }, [bookingsLoadingState, bookingsErrorState]);
+  
   const {
     data: bids,
-    isLoading: isBidsLoading,
-    isError: isBidsError
+    isLoading: bidsLoadingState,
+    isError: bidsErrorState,
   } = useBids(
     user?.id || '',
-    profileData?.id, // Pass profile ID (undefined for customers)
-    normalizedUserType // Pass the normalized userType
+    profileData?.id,
+    normalizedUserType
   );
-
+  
+  // Update our local loading state when the hook state changes
+  useEffect(() => {
+    setIsBidsLoading(bidsLoadingState);
+    setIsBidsError(bidsErrorState);
+  }, [bidsLoadingState, bidsErrorState]);
+  
   // Redirect if not logged in
   useEffect(() => {
     if (!isLoading && !user) {
