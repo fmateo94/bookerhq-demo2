@@ -616,6 +616,120 @@ function DashboardContent() {
   const [selectedBid, setSelectedBid] = useState<BidWithDetails | null>(null);
   const [counterBidModalBid, setCounterBidModalBid] = useState<BidWithDetails | null>(null);
   
+  // Define columns for the bookings table
+  const bookingColumns = [
+    { 
+      name: 'Date', 
+      selector: (row: BookingWithDetails) => row.slot_date || 'N/A', 
+      sortable: true 
+    },
+    { 
+      name: 'Time', 
+      selector: (row: BookingWithDetails) => row.slot_time || 'N/A' 
+    },
+    { 
+      name: 'Service', 
+      selector: (row: BookingWithDetails) => row.service_name || 'N/A' 
+    },
+    { 
+      name: 'Provider', 
+      selector: (row: BookingWithDetails) => row.provider_name || 'N/A' 
+    },
+    { 
+      name: 'Customer', 
+      selector: (row: BookingWithDetails) => row.customer_name || 'N/A' 
+    },
+    { 
+      name: 'Amount', 
+      selector: (row: BookingWithDetails) => row.price_paid ? `$${(row.price_paid / 100).toFixed(2)}` : 'N/A',
+      sortable: true 
+    },
+    { 
+      name: 'Status', 
+      selector: (row: BookingWithDetails) => row.status || 'N/A', 
+      sortable: true 
+    },
+    {
+      name: 'Actions',
+      cell: (row: BookingWithDetails) => (
+        <Link 
+          href={`/booking/${row.id}`}
+          className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
+        >
+          View
+        </Link>
+      ),
+    },
+  ];
+   
+  // Define columns for the bids table
+  const bidColumns = [
+    { name: 'Date', selector: (row: BidWithDetails) => row.slot_date || 'N/A', sortable: true },
+    { name: 'Time', selector: (row: BidWithDetails) => row.slot_time || 'N/A' },
+    { name: 'Service', selector: (row: BidWithDetails) => row.service_name || 'N/A' },
+    { name: 'Provider', selector: (row: BidWithDetails) => row.provider_name || 'N/A' },
+    { name: 'Amount', selector: (row: BidWithDetails) => `$${(row.bid_amount / 100).toFixed(2)}`, sortable: true },
+    { name: 'Status', selector: (row: BidWithDetails) => row.status || 'N/A', sortable: true },
+    {
+      name: 'Type',
+      selector: (row: BidWithDetails): string => {
+        const isCurrentUserCustomer = userType === 'customer';
+        const isBidOwnerProvider = row.owner_type === 'provider';
+
+        if (isCurrentUserCustomer) {
+          // Customer is viewing
+          return isBidOwnerProvider ? 'Provider Counterbid' : 'Your Bid';
+        } else {
+          // Provider/Admin is viewing
+          return isBidOwnerProvider ? 'Your Bid' : 'Customer Bid';
+        }
+      }
+    },
+    {
+      name: 'Actions',
+      cell: (row: BidWithDetails) => {
+        // For this section, we use the actual hooks-normalized type from normalizedUserType
+        const normalizedForHooks = userType === 'provider' ? 'barber' : userType;
+        const isProviderOrAdmin = normalizedForHooks && ['barber', 'tattoo_artist', 'admin'].includes(normalizedForHooks);
+        const isCustomerBid = row.owner_type === 'customer';
+        const isPending = row.status === 'pending';
+        const canCounter = isProviderOrAdmin && isCustomerBid && isPending;
+        const isFinalStatus = row.status && ['accepted', 'rejected', 'withdrawn'].includes(row.status);
+
+        return (
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                console.log('View Details onClick - Row Data:', {
+                  id: row.id,
+                  owner_type: row.owner_type,
+                  status: row.status,
+                  userType: userType
+                }); 
+                setSelectedBid(row); // Open the main action modal
+              }}
+              className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isFinalStatus} // Disable if bid has a final status
+            >
+              View Details
+            </button>
+            {canCounter && (
+              <button
+                onClick={() => {
+                  console.log('Counter Bid onClick - Row Data:', row);
+                  setCounterBidModalBid(row); // Open the counter bid modal
+                }}
+                className="border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
+              >
+                Counter
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+  
   // Use the tab from URL if available
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -691,20 +805,30 @@ function DashboardContent() {
     }
   }, [user]);
   
+  // Combined loading state
+  const isLoading = isAuthLoading || isLoadingUserData || isBookingsLoading || isBidsLoading;
+
+  // Normalize userType for hook usage - convert 'provider' to 'barber' for compatibility
+  const normalizedUserType = userType === 'provider' ? 'barber' : userType;
+
   const {
     data: bookings,
     isLoading: isBookingsLoading,
     isError: isBookingsError
-  } = useBookings(user);
+  } = useBookings(
+    user?.id || '',
+    normalizedUserType // Pass the normalized userType
+  );
 
   const {
     data: bids,
     isLoading: isBidsLoading,
     isError: isBidsError
-  } = useBids(user);
-
-  // Combined loading state
-  const isLoading = isAuthLoading || isLoadingUserData || isBookingsLoading || isBidsLoading;
+  } = useBids(
+    user?.id || '',
+    profileData?.id, // Pass profile ID (undefined for customers)
+    normalizedUserType // Pass the normalized userType
+  );
 
   // Redirect if not logged in
   useEffect(() => {
