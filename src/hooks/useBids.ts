@@ -67,8 +67,13 @@ const fetchBidsFromSupabase = async (userId: string, profileId: string | undefin
   if (userType === 'customer') {
     console.log(`fetchBidsFromSupabase: Applying customer filter: customer_id.eq.${userId}`);
     query = query.eq('customer_id', userId);
-  } else if (profileId && ['barber', 'tattoo_artist', 'admin'].includes(userType)) {
-    // Providers/Admins see bids for slots they own
+  } else if (userType === 'admin') {
+    // Admins see all bids - no additional filtering required
+    console.log('fetchBidsFromSupabase: Admin user - fetching all bids');
+    // Optionally could filter by tenant ID if needed
+    // query = query.eq('tenant_id', tenant_id);
+  } else if (profileId && ['barber', 'tattoo_artist'].includes(userType)) {
+    // Providers see bids for slots they own
     console.log(`fetchBidsFromSupabase: Applying provider filter: slots.provider_id.eq.${profileId}`);
     // Filter based on the provider_id within the nested slots table
     query = query.eq('slots.provider_id', profileId);
@@ -146,10 +151,11 @@ export const useBids = (
         return []; // Return empty array on error
       }
     },
-    // Enable query only when userType is known. For providers/admins, profileId might also be needed
-    // depending on whether fetchBidsFromSupabase strictly requires it for their logic.
-    // Let's assume for now it's only strictly required for provider types.
-    enabled: !!userId && !!userType && (userType !== 'barber' && userType !== 'tattoo_artist' || !!profileId),
+    // Enable query only when userType is known. For providers, profileId is required.
+    // For customers and admins, we don't need a profileId.
+    enabled: !!userId && !!userType && 
+      (userType === 'customer' || userType === 'admin' || 
+      ((['barber', 'tattoo_artist'].includes(userType)) && !!profileId)),
     staleTime: CACHE_TIME,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
