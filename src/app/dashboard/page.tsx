@@ -605,7 +605,7 @@ const BookingsDataTable = ({ columns, data }: {
 function DashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user, isLoading: isAuthLoading, userType: authUserType } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const queryClient = useQueryClient();
   
   // Re-add the missing state variables
@@ -693,7 +693,7 @@ function DashboardContent() {
         const isCustomerBid = row.owner_type === 'customer';
         const isPending = row.status === 'pending';
         const canCounter = isProviderOrAdmin && isCustomerBid && isPending;
-        const isFinalStatus = row.status && ['accepted', 'rejected', 'withdrawn'].includes(row.status);
+        const isFinalStatus = row.status ? ['accepted', 'rejected', 'withdrawn'].includes(row.status) : false;
 
         return (
           <div className="flex items-center space-x-2">
@@ -708,7 +708,7 @@ function DashboardContent() {
                 setSelectedBid(row); // Open the main action modal
               }}
               className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isFinalStatus} // Disable if bid has a final status
+              disabled={!!isFinalStatus} // Ensure it's a boolean with double negation
             >
               View Details
             </button>
@@ -777,7 +777,11 @@ function DashboardContent() {
           
           if (customerData && !customerError) {
             console.log('User is a customer with data:', customerData);
-            setProfileData(customerData);
+            // Add the user_type property that ProfileData requires
+            setProfileData({
+              ...customerData,
+              user_type: 'customer' // Add the missing property
+            });
             setUserType('customer');
             setIsLoadingUserData(false);
             return;
@@ -861,16 +865,37 @@ function DashboardContent() {
     if (!selectedBid || !user) return;
     console.log('Accepting bid:', selectedBid);
 
+    // Log all available fields for debugging
+    console.log('Bid fields for debugging:', {
+      id: selectedBid.id,
+      slot_id: selectedBid.slot_id,
+      customer_id: selectedBid.customer_id,
+      profile_provider_id: selectedBid.profile_provider_id,
+      provider_id: selectedBid.provider_id,
+      service_id: selectedBid.service_id,
+      tenant_id: selectedBid.tenant_id,
+      bid_amount: selectedBid.bid_amount,
+    });
+
+    // Check if provider_id exists on the bid for backward compatibility
+    const providerIdForBooking = selectedBid.profile_provider_id || selectedBid.provider_id;
+
     // Ensure required fields are available on the selectedBid object
     if (!selectedBid.slot_id || 
         !selectedBid.customer_id || 
-        !selectedBid.profile_provider_id || // The provider who owns the slot/bid
+        !providerIdForBooking || // Use either profile_provider_id or provider_id
         !selectedBid.service_id || 
         !selectedBid.tenant_id) {
-      console.error('Missing required data on selectedBid to create booking:', selectedBid);
+      console.error('Missing required data on selectedBid to create booking:', {
+        has_slot_id: !!selectedBid.slot_id,
+        has_customer_id: !!selectedBid.customer_id, 
+        has_provider_id: !!providerIdForBooking,
+        has_service_id: !!selectedBid.service_id, 
+        has_tenant_id: !!selectedBid.tenant_id
+      });
       alert('Cannot accept bid: essential information missing.');
-              return;
-            }
+      return;
+    }
             
     try {
       const supabase = getSupabaseClient();
@@ -886,14 +911,16 @@ function DashboardContent() {
 
       // --- Step 2: Create the booking record --- 
       const bookingData: TablesInsert<'bookings'> = {
-        slot_id: selectedBid.slot_id!,
-        customer_id: selectedBid.customer_id!,
-        provider_profile_id: selectedBid.profile_provider_id!,
-        service_id: selectedBid.service_id!,
+        slot_id: selectedBid.slot_id,
+        customer_id: selectedBid.customer_id,
+        provider_profile_id: providerIdForBooking,
+        service_id: selectedBid.service_id,
         price_paid: selectedBid.bid_amount, 
         status: 'confirmed',
-        tenant_id: selectedBid.tenant_id!,
+        tenant_id: selectedBid.tenant_id,
       };
+      console.log('Booking data to insert:', bookingData);
+
       const { data: newBooking, error: bookingCreateError } = await supabase
         .from('bookings')
         .insert(bookingData)
