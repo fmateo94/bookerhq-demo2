@@ -762,8 +762,36 @@ function DashboardContent() {
           
           if (profileData && !profileError) {
             console.log('User is a provider with profile:', profileData);
-            setProfileData(profileData);
-            setUserType('barber'); // Default to barber for profiles
+            const { data: tenantData } = await supabase
+              .from('tenants')
+              .select('id')
+              .eq('id', profileData.tenant_id || '')
+              .maybeSingle();
+
+            // Ensure we have the tenant ID
+            const fullProfileData = {
+              ...profileData,
+              tenant_id: profileData.tenant_id || tenantData?.id
+            };
+            console.log('Enhanced profile data with tenant info:', fullProfileData);
+            setProfileData(fullProfileData);
+            
+            // Use the user_type from the profile if available, otherwise default to barber
+            const userTypeFromProfile = (profileData as any).user_type;
+            console.log('User type from profile:', userTypeFromProfile);
+            
+            if (userTypeFromProfile === 'admin') {
+              setUserType('admin');
+              console.log('User identified as admin');
+            } else if (['barber', 'tattoo_artist'].includes(userTypeFromProfile)) {
+              setUserType(userTypeFromProfile);
+              console.log(`User identified as ${userTypeFromProfile}`);
+            } else {
+              // Default fallback
+              setUserType('barber');
+              console.log('Defaulting user to barber type');
+            }
+            
             setIsLoadingUserData(false);
             return;
           }
@@ -777,11 +805,29 @@ function DashboardContent() {
           
           if (customerData && !customerError) {
             console.log('User is a customer with data:', customerData);
-            // Add the user_type property that ProfileData requires
-            setProfileData({
+            
+            // Try to get tenant ID from a separate query if needed
+            // Use optional chaining to avoid type error
+            let tenantId = (customerData as any).tenant_id;
+            if (!tenantId) {
+              const { data: customerTenantData } = await supabase
+                .from('tenants')
+                .select('id')
+                .limit(1)
+                .maybeSingle();
+                
+              tenantId = customerTenantData?.id;
+              console.log('Found tenant ID from tenants table:', tenantId);
+            }
+            
+            // Add the user_type property that ProfileData requires and ensure tenant ID is set
+            const enhancedCustomerData = {
               ...customerData,
-              user_type: 'customer' // Add the missing property
-            });
+              user_type: 'customer',
+              tenant_id: tenantId
+            };
+            console.log('Enhanced customer data with tenant info:', enhancedCustomerData);
+            setProfileData(enhancedCustomerData);
             setUserType('customer');
             setIsLoadingUserData(false);
             return;
@@ -831,7 +877,9 @@ function DashboardContent() {
     normalizedUserType,
     profileId: profileData?.id,
     tenantId: currentTenantId,
-    userId: user?.id
+    userId: user?.id,
+    isAdmin: userType === 'admin',
+    fullProfileData: profileData
   });
   
   // Use custom loading handlers with the hooks
