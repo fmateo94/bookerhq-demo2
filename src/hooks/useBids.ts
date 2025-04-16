@@ -61,20 +61,17 @@ const fetchBidsFromSupabase = async (userId: string, profileId: string | undefin
     .from('bids')
     .select(`
       *,
-      slots (*, services (*), profiles (*))
+      slots!inner (*, services (*), profiles (*))
     `);
 
   if (userType === 'customer') {
     console.log(`fetchBidsFromSupabase: Applying customer filter: customer_id.eq.${userId}`);
     query = query.eq('customer_id', userId);
-  } else if (profileId && ['barber', 'tattoo_artist'].includes(userType)) {
-    // Providers see bids related to their profile ID
-    console.log(`fetchBidsFromSupabase: Applying provider filter: profile_provider_id.eq.${profileId}`);
-    query = query.eq('profile_provider_id', profileId);
-  } else if (userType === 'admin') {
-    // Admin sees all bids (potentially filter by tenant later)
-    console.log('fetchBidsFromSupabase: Applying admin view (all bids)');
-    // No specific filter applied for admin
+  } else if (profileId && ['barber', 'tattoo_artist', 'admin'].includes(userType)) {
+    // Providers/Admins see bids for slots they own
+    console.log(`fetchBidsFromSupabase: Applying provider filter: slots.provider_id.eq.${profileId}`);
+    // Filter based on the provider_id within the nested slots table
+    query = query.eq('slots.provider_id', profileId);
   } else {
     console.error(`fetchBidsFromSupabase: Invalid state for bid query - userType: ${userType}, profileId: ${profileId}`);
     return []; // Return empty for unhandled cases

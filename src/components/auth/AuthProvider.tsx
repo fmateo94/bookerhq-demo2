@@ -74,17 +74,37 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const supabase = getSupabaseClient();
       if (supabase) {
         const { error } = await supabase.auth.signOut();
-        if (error) {
+        
+        // Check if the error is specifically AuthSessionMissingError
+        const isSessionMissingError = error && error.name === 'AuthSessionMissingError';
+
+        if (error && !isSessionMissingError) {
+          // If it's a different error, log and re-throw it
           console.error('AuthProvider: Error signing out:', error);
           throw error;
+        } else if (isSessionMissingError) {
+          // If it's the session missing error, just log it
+          console.warn('AuthProvider: Sign out attempted but session was already missing.', error);
+        } else {
+          // No error
+          console.log('AuthProvider: Sign out successful via Supabase.');
         }
-        console.log('AuthProvider: Sign out successful');
+
+        // Always clear local state regardless of session missing error
+        console.log('AuthProvider: Clearing local user/session state.');
         setUser(null);
         setSession(null);
       }
     } catch (error) {
-      console.error('AuthProvider: Unexpected error during sign out:', error);
-      throw error;
+      // Catch errors re-thrown from the check above or other unexpected errors
+      if (error.name !== 'AuthSessionMissingError') { // Avoid double logging if already handled
+         console.error('AuthProvider: Unexpected error during sign out:', error);
+      }
+      // Even if there was an error, ensure local state is cleared as a fallback
+      setUser(null);
+      setSession(null);
+      // Optional: Re-throw if you need calling components (like Navbar) to know about critical errors
+      // throw error;
     }
   };
 

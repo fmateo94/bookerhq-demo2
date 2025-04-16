@@ -2,10 +2,54 @@
 
 export const dynamic = 'force-dynamic';
 
+import * as React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import Navbar from '@/components/ui/Navbar';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { useRouter } from 'next/navigation';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+} from "@/components/ui/carousel";
+import Autoplay from "embla-carousel-autoplay";
 
 export default function Home() {
+  const { user } = useAuth();
+  const router = useRouter();
+
+  const images = [
+    '/images/cstan5102_bright_barbershop._close_up_on_a_child_getting_a_hair_5fddc6d9-fc82-449f-bff5-3cb3c6d8bb2d.jpeg',
+    '/images/cstan5102_bright_barbershop._close_up_on_a_child_getting_a_hair_923e65e3-bbb5-4a12-84f0-0548df48891b.jpeg',
+    '/images/cstan5102_bright_barbershop._close_up_on_a_child_getting_a_hair_2d8b7116-ea22-47e3-bc6e-ca557a789583.jpeg',
+    '/images/cstan5102_bright_barbershop._close_up_on_a_child_getting_a_hair_dc59260f-f53a-4549-bc0e-70eea10533b7.jpeg',
+  ];
+
+  const plugin = React.useRef(
+    Autoplay({ delay: 3000, stopOnInteraction: true })
+  );
+
+  // Click handler for the "Browse Services" button
+  const handleBrowseClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (user) {
+      router.push('/dashboard'); // Go to main dashboard
+    } else {
+      router.push('/auth/signin');
+    }
+  };
+
+  // Click handler for the "View Auctions" button
+  const handleAuctionsClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (user) {
+      router.push('/dashboard?tab=bids'); // Go to dashboard, Bids tab
+    } else {
+      router.push('/auth/signin');
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gray-50">
       <Navbar />
@@ -39,16 +83,22 @@ export default function Home() {
                 <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
                   <div className="rounded-md shadow">
                     <Link
-                      href="/services"
-                      className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10"
+                      href="#"
+                      onClick={handleBrowseClick}
+                      role="button"
+                      tabIndex={0}
+                      className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10 cursor-pointer"
                     >
                       Browse Services
                     </Link>
                   </div>
                   <div className="mt-3 sm:mt-0 sm:ml-3">
                     <Link
-                      href="/auctions"
-                      className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 md:py-4 md:text-lg md:px-10"
+                      href="#"
+                      onClick={handleAuctionsClick}
+                      role="button"
+                      tabIndex={0}
+                      className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 md:py-4 md:text-lg md:px-10 cursor-pointer"
                     >
                       View Auctions
                     </Link>
@@ -58,8 +108,33 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <div className="lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2">
-          <div className="h-56 w-full bg-gray-300 sm:h-72 md:h-96 lg:w-full lg:h-full"></div>
+        <div className="lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2 h-56 sm:h-72 md:h-96 lg:h-full">
+          <Carousel 
+            className="w-full h-full"
+            opts={{
+              loop: true,
+            }}
+            plugins={[plugin.current]}
+            onMouseEnter={plugin.current.stop}
+            onMouseLeave={plugin.current.play}
+          >
+            <CarouselContent className="h-full">
+              {images.map((src, index) => (
+                <CarouselItem key={index} className="relative h-full">
+                  <Image
+                    src={src}
+                    alt={`Hero image ${index + 1}`}
+                    width={0}
+                    height={0}
+                    sizes="(min-width: 1024px) 50vw, 100vw"
+                    style={{ objectFit: 'cover', objectPosition: 'center' }}
+                    className="h-full w-full"
+                    priority={index === 0}
+                  />
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+          </Carousel>
         </div>
       </div>
 

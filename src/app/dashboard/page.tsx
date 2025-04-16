@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import React, { Fragment } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs/tabs';
@@ -602,15 +602,21 @@ const BookingsDataTable = ({ columns, data }: {
 };
 
 export default function Dashboard() {
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { user, isLoading: isAuthLoading, profile } = useAuth();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [userType, setUserType] = useState<string | null>(null);
   const [isLoadingUserData, setIsLoadingUserData] = useState(true);
-  const [activeTab, setActiveTab] = useState('appointments');
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+
+  // Determine initial tab from URL or default to 'appointments'
+  const initialTab = searchParams.get('tab') === 'bids' ? 'bids' : 'appointments';
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Add back the missing state declarations
   const [selectedBid, setSelectedBid] = useState<BidWithDetails | null>(null);
   const [counterBidModalBid, setCounterBidModalBid] = useState<BidWithDetails | null>(null);
-  const queryClient = useQueryClient();
 
   // Determine user role by checking profiles table
   useEffect(() => {
@@ -739,24 +745,44 @@ export default function Dashboard() {
     },
     {
       name: 'Actions',
-      cell: (row: BidWithDetails) => (
-        <button
-          onClick={() => {
-            // --- Log the row data when button is clicked --- 
-            console.log('View Details onClick - Row Data:', {
-              id: row.id,
-              owner_type: row.owner_type,
-              status: row.status,
-              userType: userType // Log current userType as well
-            }); 
-            setSelectedBid(row);
-          }}
-          className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={['accepted', 'rejected', 'withdrawn'].includes(row.status || '')}
-        >
-          View Details
-        </button>
-      ),
+      cell: (row: BidWithDetails) => {
+        const isProviderOrAdmin = userType && ['barber', 'tattoo_artist', 'admin'].includes(userType);
+        const isCustomerBid = row.owner_type === 'customer';
+        const isPending = row.status === 'pending';
+        const canCounter = isProviderOrAdmin && isCustomerBid && isPending;
+        const isFinalStatus = row.status && ['accepted', 'rejected', 'withdrawn'].includes(row.status);
+
+        return (
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                console.log('View Details onClick - Row Data:', {
+                  id: row.id,
+                  owner_type: row.owner_type,
+                  status: row.status,
+                  userType: userType
+                }); 
+                setSelectedBid(row); // Open the main action modal
+              }}
+              className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isFinalStatus} // Disable if bid has a final status
+            >
+              View Details
+            </button>
+            {canCounter && (
+              <button
+                onClick={() => {
+                  console.log('Counter Bid onClick - Row Data:', row);
+                  setCounterBidModalBid(row); // Open the counter bid modal
+                }}
+                className="border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
+              >
+                Counter
+              </button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -1036,91 +1062,90 @@ export default function Dashboard() {
   const welcomeName = profileData?.first_name || user?.user_metadata?.first_name || 'there';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       <Navbar />
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 sm:px-0">
-          <h2 className="text-2xl font-semibold text-gray-900">Welcome back, {welcomeName}</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Manage your appointments, auctions, and account settings.
-            </p>
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Welcome back, {welcomeName}
+          </h1>
+          <p className="mt-1 text-gray-600">
+            Manage your appointments, auctions, and account settings.
+          </p>
         </div>
 
-        <div className="mt-4">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList>
-              <TabsTrigger value="appointments">Appointments</TabsTrigger>
-              <TabsTrigger value="bids">My Bids</TabsTrigger>
-              <TabsTrigger value="profile">Profile</TabsTrigger>
-            </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsTrigger value="appointments">Appointments</TabsTrigger>
+            <TabsTrigger value="bids">My Bids</TabsTrigger>
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="appointments">
-              <div className="mt-4">
-                <h3 className="text-lg font-medium text-gray-900">Your Appointments</h3>
-                {isBookingsLoading ? (
-                  <div className="text-center py-12">
-                    <p>Loading appointments...</p>
-              </div>
-                ) : bookingsData.length === 0 ? (
-                  <div className="text-center py-12">
-                    <p>You don&apos;t have any appointments yet.</p>
-                    <button
-                      onClick={() => router.push('/services')}
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          <TabsContent value="appointments">
+            <div className="mt-4">
+              <h3 className="text-lg font-medium text-gray-900">Your Appointments</h3>
+              {isBookingsLoading ? (
+                <div className="text-center py-12">
+                  <p>Loading appointments...</p>
+                </div>
+              ) : bookingsData.length === 0 ? (
+                <div className="text-center py-12">
+                  <p>You don&apos;t have any appointments yet.</p>
+                  <button
+                    onClick={() => router.push('/services')}
+                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                   >
                     Browse Services
-                    </button>
+                  </button>
                 </div>
               ) : (
-                  <BookingsDataTable columns={bookingColumns} data={bookingsData} />
-                        )}
-                      </div>
-            </TabsContent>
-
-            <TabsContent value="bids">
-              <div className="mt-4">
-                <h3 className="text-lg font-medium text-gray-900">My Bids</h3>
-                {isBidsLoading ? (
-                  <div className="text-center py-12">
-                    <p>Loading bids...</p>
-              </div>
-                ) : bidsData.length === 0 ? (
-                  <div className="text-center py-12">
-                    <p>You haven&apos;t placed any bids yet.</p>
-                    {/* ... Optional button to browse auctions ... */}
-                </div>
-              ) : (
-                  <BidsDataTable columns={bidColumns} data={bidsData} />
+                <BookingsDataTable columns={bookingColumns} data={bookingsData} />
               )}
             </div>
-            </TabsContent>
+          </TabsContent>
 
-            <TabsContent value="profile">
-              {/* ... Profile Content ... */}
-            </TabsContent>
+          <TabsContent value="bids">
+            <div className="mt-4">
+              <h3 className="text-lg font-medium text-gray-900">My Bids</h3>
+              {isBidsLoading ? (
+                <div className="text-center py-12">
+                  <p>Loading bids...</p>
+                </div>
+              ) : bidsData.length === 0 ? (
+                <div className="text-center py-12">
+                  <p>You haven&apos;t placed any bids yet.</p>
+                </div>
+              ) : (
+                <BidsDataTable columns={bidColumns} data={bidsData} />
+              )}
+            </div>
+          </TabsContent>
 
-          </Tabs>
-        </div>
+          <TabsContent value="profile">
+            {/* ... Profile Content ... */}
+          </TabsContent>
+        </Tabs>
+        
+        <BidActionModal 
+          bid={selectedBid!}
+          isOpen={selectedBid !== null} 
+          onClose={() => setSelectedBid(null)} 
+          onAccept={handleAcceptBid}
+          onDecline={handleDeclineBid}
+          onCounterbid={() => {
+            setCounterBidModalBid(selectedBid);
+            setSelectedBid(null); 
+          }}
+          onWithdraw={handleWithdrawBid}
+          userType={userType}
+        />
+        <CounterBidModal
+          bid={counterBidModalBid}
+          isOpen={counterBidModalBid !== null}
+          onClose={() => setCounterBidModalBid(null)}
+          onSubmit={handleCounterbid}
+        />
       </main>
-      <BidActionModal 
-        bid={selectedBid!}
-        isOpen={selectedBid !== null} 
-        onClose={() => setSelectedBid(null)} 
-        onAccept={handleAcceptBid}
-        onDecline={handleDeclineBid}
-        onCounterbid={() => {
-          setCounterBidModalBid(selectedBid);
-          setSelectedBid(null); 
-        }}
-        onWithdraw={handleWithdrawBid}
-        userType={userType}
-      />
-      <CounterBidModal
-        bid={counterBidModalBid}
-        isOpen={counterBidModalBid !== null}
-        onClose={() => setCounterBidModalBid(null)}
-        onSubmit={handleCounterbid}
-      />
     </div>
   );
 }
