@@ -346,7 +346,7 @@ export default function BookingPage() {
 
       const bookingData = {
         slot_id: selectedSlot.id,
-        user_id: user.id,
+        customer_id: user.id,
         tenant_id: service.tenant_id || '',
         service_id: service.id,
         provider_profile_id: provider.id,

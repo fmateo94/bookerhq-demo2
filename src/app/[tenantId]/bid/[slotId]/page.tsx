@@ -143,10 +143,11 @@ export default function BidPage() {
 
         const bidData = {
             slot_id: slot.id,
-            user_id: user.id,
+            customer_id: user.id,
             tenant_id: slot.tenant_id, // Assuming tenant_id is directly on slot
             bid_amount: bidAmount,
             status: 'pending', // Initial status
+            owner_type: 'customer', // Explicitly set owner type for customer bids
         };
 
         console.log("Attempting to insert bid:", bidData);
