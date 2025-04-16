@@ -689,8 +689,7 @@ function DashboardContent() {
       name: 'Actions',
       cell: (row: BidWithDetails) => {
         // For this section, we use the actual hooks-normalized type from normalizedUserType
-        const normalizedForHooks = userType === 'provider' ? 'barber' : userType;
-        const isProviderOrAdmin = normalizedForHooks && ['barber', 'tattoo_artist', 'admin'].includes(normalizedForHooks);
+        const isProviderOrAdmin = normalizedUserType && ['barber', 'tattoo_artist', 'admin'].includes(normalizedUserType);
         const isCustomerBid = row.owner_type === 'customer';
         const isPending = row.status === 'pending';
         const canCounter = isProviderOrAdmin && isCustomerBid && isPending;
@@ -764,7 +763,7 @@ function DashboardContent() {
           if (profileData && !profileError) {
             console.log('User is a provider with profile:', profileData);
             setProfileData(profileData);
-            setUserType('provider');
+            setUserType('barber'); // Default to barber for profiles
             setIsLoadingUserData(false);
             return;
           }
@@ -805,9 +804,9 @@ function DashboardContent() {
     }
   }, [user]);
   
-  // Normalize userType for hook usage - convert 'provider' to 'barber' for compatibility
-  // Ensure we have a fallback if userType is null
-  const normalizedUserType = userType === 'provider' ? 'barber' : (userType || 'customer');
+  // Ensure we always have a valid user type for the hooks
+  // Valid types: 'barber', 'tattoo_artist', 'admin', 'customer'
+  const normalizedUserType = userType || 'customer';
   
   // Initialize loading states before the hooks
   const [isBookingsLoading, setIsBookingsLoading] = useState(true);
@@ -1038,7 +1037,7 @@ function DashboardContent() {
     console.log('Withdrawing bid:', selectedBid);
 
     // Double-check ownership and status before withdrawing
-    const isProviderOrAdmin = userType === 'provider' || userType === 'admin';
+    const isProviderOrAdmin = userType === 'barber' || userType === 'tattoo_artist' || userType === 'admin';
     const isCustomer = userType === 'customer';
     const isBidOwnerProvider = selectedBid.owner_type === 'provider';
     const isBidOwnerCustomer = selectedBid.owner_type === 'customer';
