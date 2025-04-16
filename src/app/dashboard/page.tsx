@@ -8,7 +8,7 @@ import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import React, { Fragment } from 'react';
+import React, { Fragment, Suspense } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs/tabs';
 import { Table, TableHeader, TableBody, TableHead, TableCell, TableRow } from '@/components/ui/table/table';
 import { useBookings } from '@/hooks/useBookings';
@@ -601,63 +601,79 @@ const BookingsDataTable = ({ columns, data }: {
   );
 };
 
-export default function Dashboard() {
-  const { user, isLoading: isAuthLoading, profile } = useAuth();
+// Create a client component that uses useSearchParams
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { user, isLoading: isAuthLoading, userType: authUserType } = useAuth();
+  const queryClient = useQueryClient();
+  
+  // Re-add the missing state variables
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [userType, setUserType] = useState<string | null>(null);
   const [isLoadingUserData, setIsLoadingUserData] = useState(true);
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const searchParams = useSearchParams();
-
-  // Determine initial tab from URL or default to 'appointments'
-  const initialTab = searchParams.get('tab') === 'bids' ? 'bids' : 'appointments';
-  const [activeTab, setActiveTab] = useState(initialTab);
-
-  // Add back the missing state declarations
+  const [activeTab, setActiveTab] = useState<string>('appointments');
   const [selectedBid, setSelectedBid] = useState<BidWithDetails | null>(null);
   const [counterBidModalBid, setCounterBidModalBid] = useState<BidWithDetails | null>(null);
-
-  // Determine user role by checking profiles table
+  
+  // Use the tab from URL if available
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['appointments', 'bids', 'profile'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+  
+  // Move the user type determination logic back in
   useEffect(() => {
     if (user) {
       const determineUserRole = async () => {
         setIsLoadingUserData(true);
         setProfileData(null); // Reset profile data initially
         setUserType(null); // Reset user type
-
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-          console.error('determineUserRole: Supabase client not available.');
-          setIsLoadingUserData(false);
-              return;
-            }
-            
+        
         try {
-          console.log(`determineUserRole: Checking profile for user_id: ${user.id}`);
-          const { data, error } = await supabase
-              .from('profiles')
-            .select('*') // Fetch all profile data if found
-            .eq('user_id', user.id)
-            .maybeSingle(); // Use maybeSingle() to handle 0 or 1 row without erroring on 0
-
-          if (error) {
-             // Handle errors other than 0 rows potentially returned by maybeSingle
-             console.error('determineUserRole: Error checking profile:', error);
-             // Decide how to proceed - maybe default to customer or show error?
-             setUserType('customer'); // Default to customer on unexpected error?
-          } else if (data) {
-            // Profile FOUND - User is a provider/admin
-            console.log('determineUserRole: Profile found, user is provider/admin:', data);
-            setProfileData(data);
-            // Use user_type from profile table if it exists, otherwise default
-            setUserType(data.user_type || 'provider'); 
-          } else {
-            // Profile NOT FOUND - User is a customer
-            console.log('determineUserRole: Profile not found, user is customer.');
-            setProfileData(null);
-            setUserType('customer');
+          const supabase = getSupabaseClient();
+          if (!supabase) {
+            console.error('determineUserRole: Supabase client not available.');
+            setIsLoadingUserData(false);
+            return;
           }
+          
+          // First check if the user is a provider
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (profileData && !profileError) {
+            console.log('User is a provider with profile:', profileData);
+            setProfileData(profileData);
+            setUserType('provider');
+            setIsLoadingUserData(false);
+            return;
+          }
+          
+          // Next check if the user is a customer
+          const { data: customerData, error: customerError } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (customerData && !customerError) {
+            console.log('User is a customer with data:', customerData);
+            setProfileData(customerData);
+            setUserType('customer');
+            setIsLoadingUserData(false);
+            return;
+          }
+          
+          // Default to customer if no profile found
+          console.log('No provider or customer profile found, defaulting to customer');
+          setUserType('customer');
+          
         } catch (catchError) {
           console.error('determineUserRole: Caught exception:', catchError);
           setUserType('customer'); // Default to customer on exception
@@ -665,152 +681,30 @@ export default function Dashboard() {
           setIsLoadingUserData(false);
         }
       };
+      
       determineUserRole();
     } else {
-      // User logged out or not loaded yet
+      // Reset everything if no user
       setProfileData(null);
       setUserType(null);
       setIsLoadingUserData(false);
     }
   }, [user]);
-
-  // Define columns for the bookings table
-  const bookingColumns = [
-    { 
-      name: 'Date', 
-      selector: (row: BookingWithDetails) => row.slot_date || 'N/A', 
-      sortable: true 
-    },
-    { 
-      name: 'Time', 
-      selector: (row: BookingWithDetails) => row.slot_time || 'N/A' 
-    },
-    { 
-      name: 'Service', 
-      selector: (row: BookingWithDetails) => row.service_name || 'N/A' 
-    },
-    { 
-      name: 'Provider', 
-      selector: (row: BookingWithDetails) => row.provider_name || 'N/A' 
-    },
-    { 
-      name: 'Customer', 
-      selector: (row: BookingWithDetails) => row.customer_name || 'N/A' 
-    },
-    { 
-      name: 'Amount', 
-      selector: (row: BookingWithDetails) => row.price_paid ? `$${(row.price_paid / 100).toFixed(2)}` : 'N/A',
-      sortable: true 
-    },
-    { 
-      name: 'Status', 
-      selector: (row: BookingWithDetails) => row.status || 'N/A', 
-      sortable: true 
-    },
-    {
-      name: 'Actions',
-      cell: (row: BookingWithDetails) => (
-        <Link 
-          href={`/booking/${row.id}`}
-          className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
-        >
-          View
-        </Link>
-      ),
-    },
-  ];
   
-  // Define columns for the bids table
-  const bidColumns = [
-    { name: 'Date', selector: (row: BidWithDetails) => row.slot_date || 'N/A', sortable: true },
-    { name: 'Time', selector: (row: BidWithDetails) => row.slot_time || 'N/A' },
-    { name: 'Service', selector: (row: BidWithDetails) => row.service_name || 'N/A' },
-    { name: 'Provider', selector: (row: BidWithDetails) => row.provider_name || 'N/A' },
-    { name: 'Amount', selector: (row: BidWithDetails) => `$${(row.bid_amount / 100).toFixed(2)}`, sortable: true },
-    { name: 'Status', selector: (row: BidWithDetails) => row.status || 'N/A', sortable: true },
-    {
-      name: 'Type',
-      selector: (row: BidWithDetails): string => {
-        const isCurrentUserCustomer = userType === 'customer';
-        const isBidOwnerProvider = row.owner_type === 'provider';
-
-        if (isCurrentUserCustomer) {
-          // Customer is viewing
-          return isBidOwnerProvider ? 'Provider Counterbid' : 'Your Bid';
-              } else {
-          // Provider/Admin is viewing
-          return isBidOwnerProvider ? 'Your Bid' : 'Customer Bid';
-        }
-      }
-    },
-    {
-      name: 'Actions',
-      cell: (row: BidWithDetails) => {
-        const isProviderOrAdmin = userType && ['barber', 'tattoo_artist', 'admin'].includes(userType);
-        const isCustomerBid = row.owner_type === 'customer';
-        const isPending = row.status === 'pending';
-        const canCounter = isProviderOrAdmin && isCustomerBid && isPending;
-        const isFinalStatus = row.status && ['accepted', 'rejected', 'withdrawn'].includes(row.status);
-
-        return (
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => {
-                console.log('View Details onClick - Row Data:', {
-                  id: row.id,
-                  owner_type: row.owner_type,
-                  status: row.status,
-                  userType: userType
-                }); 
-                setSelectedBid(row); // Open the main action modal
-              }}
-              className="border border-gray-300 hover:bg-gray-100 px-2 py-1 text-xs rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isFinalStatus} // Disable if bid has a final status
-            >
-              View Details
-            </button>
-            {canCounter && (
-              <button
-                onClick={() => {
-                  console.log('Counter Bid onClick - Row Data:', row);
-                  setCounterBidModalBid(row); // Open the counter bid modal
-                }}
-                className="border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1 text-xs rounded-md font-medium transition-colors"
-              >
-                Counter
-              </button>
-            )}
-          </div>
-        );
-      },
-    },
-  ];
-
   const {
     data: bookings,
-    isError: isBookingsError,
-    error: bookingsError,
     isLoading: isBookingsLoading,
-  } = useBookings(
-    user?.id || '',
-    userType // Pass the determined userType
-  );
+    isError: isBookingsError
+  } = useBookings(user);
 
   const {
     data: bids,
-    isError: isBidsError,
-    error: bidsError,
     isLoading: isBidsLoading,
-  } = useBids(
-    user?.id || '',
-    profileData?.id, // Pass profile ID (will be undefined for customers)
-    userType         // Pass the determined userType
-  );
-
-  console.log('Dashboard - Bids Hook Data:', { bids, isBidsLoading, isBidsError, bidsError });
+    isError: isBidsError
+  } = useBids(user);
 
   // Combined loading state
-  const isLoading = isAuthLoading || isLoadingUserData;
+  const isLoading = isAuthLoading || isLoadingUserData || isBookingsLoading || isBidsLoading;
 
   // Redirect if not logged in
   useEffect(() => {
@@ -1147,5 +1041,18 @@ export default function Dashboard() {
         />
       </main>
     </div>
+  );
+}
+
+// Main page component with Suspense boundary
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }
