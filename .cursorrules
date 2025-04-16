@@ -103,6 +103,19 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - Use 'gpt-4o' as the model name for OpenAI's GPT-4 with vision capabilities
 - The bids table has a status check constraint that only allows these values: 'pending', 'accepted', 'rejected', 'countered', 'withdrawn'
 
+## Deployment Lessons
+
+- Always escape apostrophes in JSX text content with &apos; to prevent HTML entity errors during build
+- Avoid using 'any' type in TypeScript - define proper types for all data structures, especially for database responses
+- Remove unused imports and variables before deployment as they can cause build failures
+- Define proper return types for hooks and functions to ensure type safety
+- When working with database responses, always handle potential null/undefined values with optional chaining or default values
+- Keep ESLint rules consistent between development and production environments
+- Test builds locally with `npm run build` before pushing to ensure no deployment-specific issues
+- Use proper TypeScript types from generated Supabase types (Tables<'table_name'>) instead of custom interfaces where possible
+- Handle all possible states in conditional rendering to prevent undefined/null errors
+- Ensure all environment variables are properly set in both development and production
+
 # Scratchpad
 
 ## Task: Integrate Auction Slots into Booking Flow

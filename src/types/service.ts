@@ -6,14 +6,14 @@ type AppointmentRow = Database['public']['Tables']['appointments']['Row'];
 export type Service = {
   id: string;
   created_at: string;
-  provider_id: string;
-  name: string;
-  description: string;
-  duration: number;
-  base_price: number;
-  service_type: 'haircut' | 'tattoo';
-  image_url?: string;
-  tenant_id: string;
+  provider_id: string | null;
+  name: string | null;
+  description: string | null;
+  duration: number | null;
+  base_price: number | null;
+  service_type: string | null;
+  image_url: string | null;
+  tenant_id: string | null;
 };
 
 export type Profile = {
@@ -24,8 +24,8 @@ export type Profile = {
   full_name: string | null;
   avatar_url: string | null;
   user_type: 'customer' | 'barber' | 'tattoo_artist';
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
   instagram_handle: string | null;
   bio: string | null;
   tenant_id: string;
@@ -53,14 +53,15 @@ export type Booking = {
 
 export type Slot = {
   id: string;
-  provider_id: string;
-  service_id: string;
-  start_time: string;
-  end_time: string;
-  is_auction: boolean;
-  auction_end_time?: string;
-  min_price?: number;
-  status: 'available' | 'booked' | 'auction' | 'completed';
+  provider_id: string | null;
+  service_id: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  is_auction: boolean | null;
+  auction_end_time: string | null;
+  min_price: number | null;
+  status: string | null;
+  tenant_id: string | null;
   created_at: string;
 };
 

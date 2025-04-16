@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import Navbar from '@/components/ui/Navbar';
@@ -18,6 +18,207 @@ import { BidWithDetails } from '@/types/bids';
 import { ProfileData } from '@/types/profiles';
 import { useQueryClient } from '@tanstack/react-query';
 import { TablesInsert } from '@/types/supabase';
+
+// Type for customer data fetched from the database
+type Customer = {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_number?: string;
+};
+
+// Type for service data fetched from the database
+type Service = {
+  id: string;
+  name: string;
+};
+
+// Type for provider data fetched from the database
+type Profile = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  user_id: string;
+  phone_number?: string;
+};
+
+// Add type definitions for the database responses
+type SlotWithRelations = {
+  id: string;
+  service_id: string;
+  provider_id: string;
+  start_time: string;
+  end_time: string;
+  is_auction: boolean;
+  min_price: number;
+  services: {
+    id: string;
+    name: string;
+  };
+  profiles: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+};
+
+// Add this type before the DataTable component
+type GroupedBids = {
+  [key: string]: {
+    originalBid: BidWithDetails;
+    relatedBids: BidWithDetails[];
+  };
+};
+
+// Update the DataTable component
+const DataTable = ({ columns, data }: { 
+  columns: Array<{
+    name: string;
+    selector?: (row: BidWithDetails) => string | JSX.Element;
+    sortable?: boolean;
+    cell?: (row: BidWithDetails) => JSX.Element;
+  }>, 
+  data: Array<BidWithDetails> 
+}) => {
+  // Type guard to check if array contains BidWithDetails
+  const isBidArray = (items: Array<BidWithDetails>): items is BidWithDetails[] => {
+    return items.length === 0 || 'bid_amount' in items[0];
+  };
+
+  // Group bids by slot_id - only for BidWithDetails arrays
+  const groupBidsBySlot = (items: Array<BidWithDetails>): GroupedBids => {
+    if (!isBidArray(items)) return {};
+    
+    const grouped: GroupedBids = {};
+    
+    // First pass: collect all customer bids
+    items.forEach(bid => {
+      if (!bid.slot_id) return;
+      
+      // If this is a customer bid, add it as an original bid
+      if (bid.owner_type === 'customer') {
+        if (!grouped[bid.slot_id]) {
+          grouped[bid.slot_id] = {
+            originalBid: bid,
+            relatedBids: []
+          };
+        }
+      }
+    });
+
+    // Second pass: add provider counter bids to their respective groups
+    items.forEach(bid => {
+      if (!bid.slot_id || !bid.parent_bid_id) return;
+
+      // If this is a provider bid, find its parent bid and add it to related bids
+      if (bid.owner_type === 'provider') {
+        // Find the parent bid's slot_id
+        const parentBid = items.find(b => b.id === bid.parent_bid_id);
+        if (parentBid && parentBid.slot_id && grouped[parentBid.slot_id]) {
+          grouped[parentBid.slot_id].relatedBids.push(bid);
+          // Sort related bids by creation date in descending order (newest first)
+          grouped[parentBid.slot_id].relatedBids.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+        }
+      }
+    });
+    
+    return grouped;
+  };
+
+  // If the data contains bid_amount, it's a bid
+  const isBidsTable = data.length > 0 && 'bid_amount' in data[0];
+  
+  if (isBidsTable) {
+    const groupedBids = groupBidsBySlot(data as BidWithDetails[]);
+    
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead>
+            <tr>
+              {columns.map((column, i) => (
+                <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{column.name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {Object.entries(groupedBids).map(([slotId, group], groupIndex) => {
+              // Combine all bids for this slot in chronological order (newest first)
+              const allBidsForSlot = [...group.relatedBids, group.originalBid]
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+              return (
+                <React.Fragment key={slotId}>
+                  {allBidsForSlot.map((bid, bidIndex) => {
+                    const isNewestBid = bidIndex === 0;
+                    const hasMultipleBids = allBidsForSlot.length > 1;
+
+                    return (
+                      <tr 
+                        key={`${slotId}-bid-${bidIndex}`} 
+                        className={`${
+                          isNewestBid || !hasMultipleBids
+                            ? "bg-white hover:bg-gray-50"
+                            : "bg-gray-50 border-l-4 border-gray-200 text-gray-500"
+                        }`}
+                      >
+                        {columns.map((column, j) => (
+                          <td 
+                            key={j} 
+                            className={`whitespace-nowrap ${
+                              isNewestBid || !hasMultipleBids
+                                ? "px-6 py-4 text-base font-medium"
+                                : "px-6 py-3 text-sm"
+                            }`}
+                          >
+                            {column.cell ? column.cell(bid) : column.selector ? column.selector(bid) : ''}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                  {/* Add a subtle spacing row between groups */}
+                  {groupIndex < Object.keys(groupedBids).length - 1 && (
+                    <tr className="h-2 bg-gray-50">
+                      <td colSpan={columns.length} className="border-b border-gray-200"></td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // Regular table for non-bid data
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead>
+          <tr>
+            {columns.map((column, i) => (
+              <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{column.name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {data.map((row, i) => (
+            <tr key={i}>
+              {columns.map((column, j) => (
+                <td key={j} className="px-6 py-4 whitespace-nowrap">{column.cell ? column.cell(row) : column.selector ? column.selector(row) : ''}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
 // Update BidActionModal component
 const BidActionModal = ({ 
@@ -423,13 +624,13 @@ export default function Dashboard() {
         if (!supabase) {
           console.error('determineUserRole: Supabase client not available.');
           setIsLoadingUserData(false);
-          return;
-        }
-
+              return;
+            }
+            
         try {
           console.log(`determineUserRole: Checking profile for user_id: ${user.id}`);
           const { data, error } = await supabase
-            .from('profiles')
+              .from('profiles')
             .select('*') // Fetch all profile data if found
             .eq('user_id', user.id)
             .maybeSingle(); // Use maybeSingle() to handle 0 or 1 row without erroring on 0
@@ -530,7 +731,7 @@ export default function Dashboard() {
         if (isCurrentUserCustomer) {
           // Customer is viewing
           return isBidOwnerProvider ? 'Provider Counterbid' : 'Your Bid';
-        } else {
+              } else {
           // Provider/Admin is viewing
           return isBidOwnerProvider ? 'Your Bid' : 'Customer Bid';
         }
@@ -562,6 +763,7 @@ export default function Dashboard() {
   const {
     data: bookings,
     isError: isBookingsError,
+    error: bookingsError,
     isLoading: isBookingsLoading,
   } = useBookings(
     user?.id || '',
@@ -648,7 +850,7 @@ export default function Dashboard() {
       if (cancelBookingsError) {
         // Log the error but don't necessarily stop the whole process
         console.error('Error cancelling conflicting bookings:', cancelBookingsError);
-              } else {
+          } else {
         console.log('Conflicting bookings (if any) cancelled.');
       }
 
@@ -676,7 +878,7 @@ export default function Dashboard() {
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['bids'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
-    } catch (error) {
+        } catch (error) {
       console.error('Error during bid acceptance process:', error);
       alert('Failed to accept bid. Please try again.');
       // Consider more robust error handling / rollback logic here
@@ -687,8 +889,8 @@ export default function Dashboard() {
     if (!selectedBid || !user) return;
     console.log('Declining bid:', selectedBid);
     // ... (Implementation - needs Supabase calls to update bid, notify) ...
-    try {
-      const supabase = getSupabaseClient();
+        try {
+          const supabase = getSupabaseClient();
       if (!supabase) throw new Error('Supabase client not available');
 
       const { error } = await supabase
@@ -721,8 +923,8 @@ export default function Dashboard() {
           user 
       });
       alert('Cannot place counterbid, required information is missing.');
-      return;
-    }
+            return;
+          }
     console.log('Countering bid:', counterBidModalBid, 'with amount:', amount);
     
         try {
@@ -742,7 +944,7 @@ export default function Dashboard() {
       };
 
       // 1. Create counter bid
-      const { error: insertError } = await supabase
+      const { data: newBid, error: insertError } = await supabase
         .from('bids')
         .insert(newBidData)
         .select()
@@ -819,12 +1021,12 @@ export default function Dashboard() {
   }
 
   // Handle data fetching errors (optional, ErrorBoundary might catch these)
-  // if (isBookingsError) {
-  //   // Show specific error for bookings
-  // }
-  // if (isBidsError) {
-  //   // Show specific error for bids
-  // }
+  if (isBookingsError) {
+    // Show specific error for bookings
+  }
+  if (isBidsError) {
+    // Show specific error for bids
+  }
 
   const bookingsData = bookings || [];
   const bidsData = bids || [];

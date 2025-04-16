@@ -42,26 +42,24 @@ export default function BookingPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [authPromptVisible, setAuthPromptVisible] = useState(false);
 
-  // For demo purposes, we're using April 2025 dates since that's when our sample data is
-  // In production, this would use new Date() to start from today
-  
-  // Generate next 7 days starting from local April 5, 2025
+  // Generate next 7 days starting from today
   const next7Days = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(2025, 3, 5 + i); // Month 3 is April
+    const date = new Date();
+    date.setDate(date.getDate() + i);
     date.setHours(0, 0, 0, 0); // Set to midnight local time
-    console.log('Generated local date:', {
-      i,
-      dateString: date.toString(), // Show local representation
-      iso: date.toISOString(), // Show underlying UTC
+    console.log('Generated date for day', i, ':', {
+      date: date.toString(),
+      day: date.getDate(),
+      month: date.getMonth(),
+      year: date.getFullYear()
     });
     return date;
   });
 
-  // Get today's date at the start of the day for comparison
-  const today = startOfDay(new Date());
+  // All generated days are future days since we're starting from today
+  const futureDays = next7Days;
 
-  // Filter the generated days to only include today and future dates
-  const futureDays = next7Days.filter(day => !isBefore(startOfDay(day), today));
+  console.log('Available dates for selection:', futureDays.map(d => d.toISOString()));
 
   // Log timeSlots state whenever it changes
   useEffect(() => {
@@ -119,7 +117,18 @@ export default function BookingPage() {
         if (!serviceData) throw new Error('Service not found');
 
         console.log('Successfully fetched service:', serviceData);
-        setService(serviceData);
+        // Cast the data to Service type since we know required fields exist
+        const service: Service = {
+          ...serviceData,
+          provider_id: serviceData.provider_id || '',
+          name: serviceData.name || 'Unnamed Service',
+          description: serviceData.description || '',
+          duration: serviceData.duration || 0,
+          base_price: serviceData.base_price || 0,
+          service_type: serviceData.service_type || 'unknown',
+          tenant_id: serviceData.tenant_id || ''
+        };
+        setService(service);
 
         // Fetch provider details
         const { data: providerData, error: providerError } = await supabase
@@ -133,10 +142,19 @@ export default function BookingPage() {
         if (!providerData) throw new Error('Provider not found');
 
         console.log('Successfully fetched provider:', providerData);
-        setProvider(providerData);
+        // Cast the data to Profile type since we know required fields exist
+        const provider: Profile = {
+          ...providerData,
+          user_id: providerData.user_id || '',
+          first_name: providerData.first_name || '',
+          last_name: providerData.last_name || '',
+          user_type: (providerData.user_type as 'customer' | 'barber' | 'tattoo_artist') || 'barber',
+          tenant_id: providerData.tenant_id || ''
+        };
+        setProvider(provider);
 
-        // Set initial date to local April 5, 2025
-        const initialDate = new Date(2025, 3, 5);
+        // Set initial date to today
+        const initialDate = new Date();
         initialDate.setHours(0, 0, 0, 0);
 
         console.log('Setting initial local date:', {
@@ -144,7 +162,7 @@ export default function BookingPage() {
           iso: initialDate.toISOString()
         });
         
-        await fetchSlots(initialDate, serviceData, providerData);
+        await fetchSlots(initialDate, service, provider);
         setSelectedDate(initialDate);
       } catch (error) {
         console.error('Error in fetchData:', error);
@@ -204,20 +222,26 @@ export default function BookingPage() {
 
       if (slotsError) throw slotsError;
 
-      // Get current local time
+      // Use actual current time for comparing slots
       const now = new Date();
-      console.log('Filtering based on current local time:', now.toString());
+      console.log('Using current date for comparison:', now.toString());
 
       // Convert slots to time slots and filter out past times
-      const timeSlots: TimeSlot[] = (slotsData || [])
+      const timeSlots = (slotsData || [])
         .map(slot => {
+          // Skip slots with no start time
+          if (!slot.start_time) {
+            console.log('Skipping slot with no start time:', slot.id);
+            return null;
+          }
+
           const slotStartTimeUTC = parseISO(slot.start_time); // Parse the UTC string
           const localTime = format(slotStartTimeUTC, 'HH:mm'); // Format based on local time zone
 
           // Check if the slot start time is in the future relative to now
           const isFutureSlot = isBefore(now, slotStartTimeUTC);
           const isAvailable = slot.status === 'available';
-          const isAuction = slot.is_auction;
+          const isAuction = slot.is_auction ?? false; // Default to false if null
           const isSelectable = isFutureSlot && (isAvailable || isAuction);
 
           console.log('Processing slot:', {
@@ -231,16 +255,18 @@ export default function BookingPage() {
             localTimeFormatted: localTime
           });
 
-          return {
+          const timeSlot: TimeSlot = {
             slot,
             time: localTime,
             isAvailable,
             isAuction,
-            minPrice: slot.min_price,
-            isSelectable // Include the new flag
+            minPrice: slot.min_price || undefined,
+            isSelectable
           };
+
+          return timeSlot;
         })
-        .filter(ts => ts.isSelectable); // Keep only selectable slots (future and available/auction)
+        .filter((ts): ts is NonNullable<typeof ts> => ts !== null && ts.isSelectable); // Keep only non-null selectable slots
 
       console.log('Debug - Final filtered time slots:', {
         total: timeSlots.length,
@@ -321,11 +347,11 @@ export default function BookingPage() {
       const bookingData = {
         slot_id: selectedSlot.id,
         user_id: user.id,
-        tenant_id: service.tenant_id,
+        tenant_id: service.tenant_id || '',
         service_id: service.id,
         provider_profile_id: provider.id,
         status: 'confirmed', 
-        price_paid: service.base_price ?? 0, 
+        price_paid: (service.base_price ?? 0) as number,
       };
 
       console.log('Attempting to insert booking with this exact data:', bookingData);
