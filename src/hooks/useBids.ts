@@ -50,12 +50,12 @@ const processBids = (bidsData: RawBidData[]): BidWithDetails[] => {
   });
 };
 
-const fetchBidsFromSupabase = async (userId: string, profileId: string | undefined, userType: string | null) => {
+const fetchBidsFromSupabase = async (userId: string, profileId: string | undefined, userType: string | null, tenantId?: string) => {
   const supabase = getSupabaseClient();
   if (!supabase || !userId) throw new Error('Supabase client not initialized or userId missing');
   if (!userType) throw new Error('User type is unknown');
 
-  console.log(`fetchBidsFromSupabase: Fetching for userType: ${userType}, userId: ${userId}, profileId: ${profileId}`);
+  console.log(`fetchBidsFromSupabase: Fetching for userType: ${userType}, userId: ${userId}, profileId: ${profileId}, tenantId: ${tenantId}`);
 
   let query = supabase
     .from('bids')
@@ -71,7 +71,9 @@ const fetchBidsFromSupabase = async (userId: string, profileId: string | undefin
     // Admins see all bids - no additional filtering required
     console.log('fetchBidsFromSupabase: Admin user - fetching all bids');
     // Optionally could filter by tenant ID if needed
-    // query = query.eq('tenant_id', tenant_id);
+    if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    }
   } else if (profileId && ['barber', 'tattoo_artist'].includes(userType)) {
     // Providers see bids for slots they own
     console.log(`fetchBidsFromSupabase: Applying provider filter: slots.provider_id.eq.${profileId}`);
@@ -113,12 +115,13 @@ const setBidsCache = (bids: BidWithDetails[]) => {
 export const useBids = (
   userId: string,
   profileId: string | undefined,
-  userType: string | null 
+  userType: string | null,
+  tenantId?: string // Add optional tenant ID parameter
 ): UseQueryResult<BidWithDetails[], Error> => {
-  console.log(`useBids called with userId: ${userId}, profileId: ${profileId}, userType: ${userType}`);
+  console.log(`useBids called with userId: ${userId}, profileId: ${profileId}, userType: ${userType}, tenantId: ${tenantId}`);
 
   return useQuery({
-    queryKey: ['bids', userId, profileId, userType], // Add userType to key
+    queryKey: ['bids', userId, profileId, userType, tenantId], // Add tenantId to key
     queryFn: async () => {
       if (!userId || !userType) {
         console.log('useBids: Skipping fetch, missing userId or userType');
@@ -131,7 +134,8 @@ export const useBids = (
       // Fetching logic moved inside fetchBidsFromSupabase
       try {
         console.log('useBids: Fetching bids from Supabase...');
-        const data = await fetchBidsFromSupabase(userId, profileId, userType);
+        // Pass tenantId to the fetch function
+        const data = await fetchBidsFromSupabase(userId, profileId, userType, tenantId);
         console.log('useBids: Raw data from Supabase:', data);
         const processedBids = processBids(data || []); // Ensure data is array
         console.log('useBids: Processed bids:', processedBids);
