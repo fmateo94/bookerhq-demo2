@@ -1,0 +1,164 @@
+<context>
+# Overview
+BookerHQ is a modern booking platform that allows service providers to offer their services through two primary models: 
+1. Traditional direct booking - clients book available time slots at fixed prices
+2. Auction-based booking - clients bid on premium or high-demand time slots
+
+The platform serves both service providers (e.g., consultants, therapists, coaches) and clients seeking to book their services. By introducing auction capabilities, BookerHQ addresses the market inefficiency of high-demand times being priced the same as low-demand times, while giving clients more flexibility in how they secure appointments.
+
+# Core Features
+## Multi-tenant Booking System
+- Supports multiple service providers with customizable booking pages
+- Each provider can offer services with fixed pricing or auction-based pricing
+- Customizable booking policies, cancellation rules, and availability
+
+## Auction and Bidding System
+- Service providers can designate specific slots for auction
+- Starting bids can be set by providers
+- Clients can place bids on auction slots
+- Providers can accept, reject, or counter bids
+- Automatic notifications for bid status changes
+- Bidding history and analytics for providers
+
+## User Management
+- Authentication and authorization for providers and clients
+- Profile management for both user types
+- Dashboard for managing appointments, bids, and services
+- Notification preferences and communication settings
+
+# User Experience
+## Service Provider Journey
+- Sign up and create profile with services offered
+- Set availability and pricing for regular bookings
+- Designate special slots for auction with minimum bids
+- Manage incoming bookings and auction bids
+- View reports on booking patterns and revenue
+
+## Client Journey
+- Browse service providers and available services
+- View calendar with available slots (regular and auction)
+- Book regular slots instantly at fixed prices
+- Place bids on auction slots
+- Manage appointments and track bid status
+- Receive notifications about bid updates
+</context>
+<PRD>
+# Technical Architecture
+## System Components
+- Next.js frontend with TypeScript for type safety
+- Supabase for authentication, database, and real-time features
+- PostgreSQL database for structured data storage
+- Real-time notifications using Supabase Realtime
+- Responsive design for mobile and desktop interfaces
+
+## Data Models
+### Core Tables
+- **tenants**: Service providers offering bookings
+- **services**: Different services offered by providers
+- **slots**: Time slots for bookings (with type: regular or auction)
+- **bookings**: Confirmed appointments for regular slots
+- **bids**: Auction bids for auction slots with status tracking
+- **users**: Client and provider accounts with authentication
+- **notifications**: System notifications for various events
+
+### Key Relationships
+- Tenants have many services
+- Services have many slots
+- Slots can have either a booking (regular) or multiple bids (auction)
+- Users can have many bookings and bids
+- Bids track their status (pending, accepted, rejected, countered, withdrawn)
+
+## APIs and Integrations
+- REST API endpoints for CRUD operations on all resources
+- Real-time subscriptions for bid updates and notifications
+- Calendar integration for availability management
+- Email notifications for booking and bid status changes
+- Payment gateway integration for processing bookings and winning bids
+
+## Infrastructure Requirements
+- Supabase for database, authentication, and real-time features
+- Vercel for Next.js deployment
+- Email service provider for notifications
+- Secure environment for handling payment information
+- Regular database backups and data retention policies
+
+# Development Roadmap
+## Phase 1: Core Booking System
+- User authentication and basic profiles
+- Tenant management system
+- Service configuration
+- Basic slot management with calendar interface
+- Regular booking functionality
+- Admin dashboard for service providers
+- Email notifications for bookings
+
+## Phase 2: Auction System Implementation
+- Extend slot model to support auction type
+- Create bids table and management system
+- Develop UI for placing and viewing bids
+- Implement bid status tracking (pending, accepted, rejected)
+- Add real-time notifications for bid updates
+- Enhance provider dashboard with bid management
+
+## Phase 3: Advanced Features
+- Implement counterbid functionality for providers
+- Add bid history and analytics
+- Enhance notification system with preferences
+- Develop calendar view with visual distinction of slot types
+- Create reports and insights for booking patterns
+- Add support for recurring bookings
+
+## Phase 4: Optimization and Extension
+- Performance optimization for calendar and booking views
+- Mobile app development
+- Advanced analytics dashboard
+- Integration with external calendar systems
+- Implement waitlist functionality for filled slots
+- Support for group bookings and multi-slot services
+
+# Logical Dependency Chain
+1. Basic user authentication and profiles must be implemented first
+2. Tenant and service management systems form the foundation
+3. Regular slot booking system provides the core functionality
+4. Auction and bid system builds upon the existing slot architecture
+5. Real-time notifications enhance the bidding experience
+6. Counterbid functionality completes the auction loop
+7. Reporting and analytics provide business intelligence
+8. External integrations extend the platform's reach
+
+# Risks and Mitigations
+## Technical Challenges
+- **Real-time performance**: Ensure Supabase subscriptions are properly optimized
+- **Database scaling**: Design schema with performance in mind from the start
+- **UI complexity**: Use component-based architecture for maintainability
+
+## MVP Considerations
+- Focus on core booking functionality first to establish minimum viable product
+- Ensure auction system can be added without major architecture changes
+- Create clear separation between regular and auction booking flows
+
+## Resource Constraints
+- Prioritize features based on user value and implementation complexity
+- Consider using third-party libraries for common functionality
+- Implement proper error handling and monitoring from the start
+
+# Appendix
+## Auction System Rules
+- Minimum bid increment: 10% of current highest bid
+- Auction period: Provider-defined (default 48 hours)
+- Auto-accept threshold: Optional setting for providers
+- Notification frequency: Real-time for outbid situations
+- Counterbid window: 24 hours after initial bid placement
+
+## Booking Policies
+- Cancellation window: 24 hours for regular bookings
+- No-show policy: Provider-defined
+- Rebooking options for cancelled appointments
+- Waiting list functionality for popular providers
+
+## Payment Handling
+- Capture payment details on bid placement
+- Process payment only upon bid acceptance
+- Refund policy for rejected bids
+- Deposit options for high-value services
+</PRD> 

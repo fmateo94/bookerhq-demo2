@@ -1,0 +1,67 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Ensures proper schema validation using Supabase MCP before making database changes
+globs: supabase/**/*.sql
+alwaysApply: false
+---
+# Validate Schema Changes with Supabase MCP
+
+Always validate schema changes before applying them to prevent breaking existing applications or data.
+
+## Validation Process
+
+1. Before making schema changes, run the validation command:
+   ```bash
+   npx supabase db diff --schema public > migration_review.sql
+   ```
+
+2. Review the generated migration_review.sql to understand potential changes:
+   ```bash
+   cat migration_review.sql
+   ```
+
+3. Test your changes with local schema validation:
+   ```bash
+   npx supabase db lint
+   ```
+
+4. For complex schema changes, run the following to check for issues:
+   ```bash
+   npx supabase migrations verify
+   ```
+
+## Best Practices
+
+- Never make direct schema changes in production without validation
+- Always test migrations in a development environment first
+- Document schema changes with clear comments
+- Keep migrations atomic; one logical change per migration
+- Add proper indexes for any columns used in WHERE clauses
+- Validate foreign key constraints
+
+## Example Workflow
+
+```bash
+# Step 1: Create a schema migration
+npx supabase migration new add_user_roles
+
+# Step 2: Add your changes to the created SQL file
+# Step 3: Validate the changes
+npx supabase db lint
+npx supabase migrations verify
+
+# Step 4: Apply changes to local development
+npx supabase migration up
+
+# Step 5: Test your application against these changes
+
+# Step 6: If valid, commit the migration file
+git add supabase/migrations/
+git commit -m "Add user roles to schema"
+```
+
+Remember: Schema changes are potentially destructive operations. Always back up your data before applying changes to production.
